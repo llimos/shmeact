@@ -3,14 +3,14 @@
 // - DOM node (can have children)
 // - Text
 // - Array
-// A component can also return null, so that is a valid spec
 
 // Elements start out as an element spec. This is not the same type of object that goes in the virtual DOM,
 // though there are similarities.
-// This is what gets returned from a component's render method
+// This is what gets returned from a component's render method.
 // Component and DOM elements are objects that describe the props and children
 // Texts are just strings
 // Arrays are just arrays
+// A component can also return null, so that is also a valid spec
 
 // There is a difference between children of a component and children of a DOM element
 // children of a component are simply a prop that has been passed in in a different way
