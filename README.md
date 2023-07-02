@@ -38,6 +38,7 @@ Start coding! The library is in shmeact.ts, and your code is in index.ts. Use it
 * `useEffect` hook
 * `useRef` hook, and the `ref` prop for DOM elements
 * `useMemo` hook
+* `useCallback` hook
 
 Other hooks might be added later, but there's enough here to prove the concept.
 
