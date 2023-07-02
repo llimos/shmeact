@@ -1,0 +1,17 @@
+{
+  "name": "shmeact",
+  "version": "1.0.0",
+  "description": "Trying to build a rudimentary React",
+  "author": "Shimon Lyons",
+  "license": "MIT",
+  "private": false,
+  "devDependencies": {
+    "serve": "^14.2.0",
+    "typescript": "^5.1.6"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "serve",
+    "watch": "tsc -w"
+  }
+}

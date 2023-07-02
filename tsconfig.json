@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",                                  /* Set the JavaScript language version for emitted JavaScript and include compatible library declarations. */
+    "lib": ["DOM", "ES2022"],                                        /* Specify a set of bundled library declaration files that describe the target runtime environment. */
+    "jsx": "react",                                /* Specify what JSX code is generated. */
+    "jsxFactory": "createElement",                                 /* Specify the JSX factory function used when targeting React JSX emit, e.g. 'React.createElement' or 'h'. */
+    "jsxFragmentFactory": "Fragment",                         /* Specify the JSX Fragment reference used for fragments when targeting React JSX emit e.g. 'React.Fragment' or 'Fragment'. */
+    "module": "ESNext",                                /* Specify what module code is generated. */
+    "rootDir": "./",                                  /* Specify the root folder within your source files. */
+    "moduleResolution": "NodeNext",                     /* Specify how TypeScript looks up a file from a given module specifier. */
+    "baseUrl": "./",                                  /* Specify the base directory to resolve non-relative module names. */
+    "outDir": "./build",                                   /* Specify an output folder for all emitted files. */
+    "forceConsistentCasingInFileNames": true,            /* Ensure that casing is correct in imports. */
+    "strict": true,                                      /* Enable all strict type-checking options. */
+    "removeComments": true
+  }
+}
