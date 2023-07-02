@@ -36,7 +36,7 @@ Start coding! The library is in shmeact.ts, and your code is in index.ts. Use it
 * `key` prop for matching elements during reconciliation
 * `useState` hook
 * `useEffect` hook
-* `useRef` hook
+* `useRef` hook, and the `ref` prop for DOM elements
 * `useMemo` hook
 
 Other hooks might be added later, but there's enough here to prove the concept.
