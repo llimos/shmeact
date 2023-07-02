@@ -428,7 +428,8 @@ function update(existing: ShmeactElement, updated: ShmeactElementSpec): void {
             if (nk.startsWith('on'))
                 existing.dom?.addEventListener(nk.slice(2).toLowerCase(), nv);
             else
-                existing.dom?.setAttribute(nk, nv);
+                //@ts-ignore We don't know if it's a real property or not
+                existing.dom[nk] = nv;
             
         // Update vdom props
         existing.props = updated.props;
@@ -598,7 +599,7 @@ function appendChild(node: Node, parent: Element, offset: number): void {
 * Utility function to find, for a given Shmeact element, who its immediate real (DOM) parent is,
 * and how many real (DOM) older siblings it has
 */ 
-function getDomParentAndOffset(element: Exclude<ShmeactElement, null>): [Element, number] {
+function getDomParentAndOffset(element: ShmeactElement): [Element, number] {
     // Keep moving up the tree until we hit a ShmeactDomElement. That will be the parent.
     // As we go, add up the domElement counts of the older siblings to this element. That will be the offset.
     let currentElement = element;

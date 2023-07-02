@@ -30,6 +30,8 @@ Watch mode is also available as an alternative to building
 
 Start coding! The library is in shmeact.ts, and your code is in index.ts. Use it just like React.
 
+Note that DOM element typings come from TypeScript, and may differ slightly in React. If this is the case, edit the `types.d.ts` file accordingly.
+
 ## What's supported
 * JSX, with Typescript configured appropriately
 * React basics - components, rendering, etc.
@@ -54,6 +56,8 @@ It will probably just blow up spectacularly.
 But if you have conformant React code, it should work fine.
 
 In terms of the function names, there is no separate ShmeactDOM package. Use `domRender` and `domUnmount` instead.
+
+Also, Shmeact doesn't do the special case properties that React does - e.g. `value` on an `<select>` instead of looking for `selected` on the `<option>`. What's in the DOM is what you get.
 
 ## Why "Shmeact"?
 Shmeact stands for *Shimon's Minimal React*. But it's equally appropriate as a response to those who say "React, shmeact!" This is the Shmeact of which they speak.
