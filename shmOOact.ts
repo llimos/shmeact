@@ -1,7 +1,10 @@
 // Type of a Shmeact component function. Your components should satisfy this
-export type ShmeactComponent<T extends ShmeactProps = {}> = (props?: T) => ShmeactElementSpec;
+export type ShmeactComponent<T extends ShmeactProps = {}> = (props: T & {children?: ShmeactElementSpec[] | null}) => ShmeactElementSpec;
 
-type ShmeactProps = Record<string, any> | null;
+interface ShmeactProps {
+    ref?: Ref;
+    [x:string]: unknown;
+}
 
 /** Props used by Shmeact itself, not to be put in the DOM */
 const internalProps = ['key', 'ref'];
@@ -224,7 +227,7 @@ abstract class ShmeactElementWithChildren<T extends ShmeactElementSpec = Shmeact
 
 class ShmeactDomElement extends ShmeactElementWithChildren<ShmeactDomElementSpec> {
     component: string;
-    props: ShmeactProps;
+    props: ShmeactProps | null;
     
     rendered: Element | null = null;
     
@@ -240,7 +243,9 @@ class ShmeactDomElement extends ShmeactElementWithChildren<ShmeactDomElementSpec
         if (this.props)
             for (const [key, val] of Object.entries(this.props)) {
                 // Attach the DOM element to the ref
+                //@ts-ignore
                 if (key === 'ref' && 'current' in val)
+                    //@ts-ignore
                     val.current = this.rendered;
 
                 // Ignore internal props - don't put them in the DOM
@@ -250,6 +255,7 @@ class ShmeactDomElement extends ShmeactElementWithChildren<ShmeactDomElementSpec
                 if (key.startsWith('on'))
                     // Event handlers
                     // React adds them all at the root, we're not going to do that
+                    //@ts-ignore
                     this.rendered.addEventListener(key.slice(2).toLowerCase(), val);
                 else
                     //@ts-ignore Real React knows what properties are allowed on each element type
@@ -287,9 +293,11 @@ class ShmeactDomElement extends ShmeactElementWithChildren<ShmeactDomElementSpec
                     const eventName = k.slice(2).toLowerCase();
                     if (!(k in newProps) || newProps[k] !== v) {
                         // If it's either changed or removed, remove it
+                        //@ts-ignore
                         this.rendered?.removeEventListener(eventName, v);
                         // If it's changed, add the new one back in
                         if (k in newProps)
+                            //@ts-ignore
                             this.rendered?.addEventListener(eventName, newProps[k]);
                     }
                 } else {  // Regular attribute
@@ -310,6 +318,7 @@ class ShmeactDomElement extends ShmeactElementWithChildren<ShmeactDomElementSpec
         // Whatever's left in the set is new
         for (const [nk, nv] of Object.entries(copy))
             if (nk.startsWith('on'))
+                //@ts-ignore
                 this.rendered?.addEventListener(nk.slice(2).toLowerCase(), nv);
         else
             //@ts-ignore We don't know if it's a real property or not
@@ -421,7 +430,7 @@ class ShmeactTextElement extends ShmeactElement {
 
 class ShmeactComponentElement extends ShmeactElement<ShmeactComponentElementSpec> {
     component: ShmeactComponent;
-    props: ShmeactProps;
+    props: ShmeactProps | null;
     children: ShmeactElementSpec[] | null;
     
     rendered: ShmeactElement | null = null;
@@ -568,6 +577,18 @@ class ShmeactComponentElement extends ShmeactElement<ShmeactComponentElementSpec
         return this.memos[index].value as T;
     }
     
+    useContext<T>(context: Context<T>): T {
+        // Walk up the component tree, looking for a provider
+        let currentParent = this.parent;
+        while (!(currentParent instanceof ShmeactRootElement)) {
+            if (currentParent instanceof ShmeactComponentElement && currentParent.component === context.Provider)
+                return currentParent.props!.context as T;
+            currentParent = currentParent.parent;
+        }
+        // If we don't find one, return the default value
+        return context.defaultValue;
+    }
+
     depsChanged(oldDeps: any[] | undefined, newDeps: any[] | undefined): boolean {
         if (!oldDeps || !newDeps)
             return true;
@@ -636,6 +657,22 @@ export function useMemo<T = any>(fn: () => T, deps: any[]): T {
 // This is straight from the React docs!
 export function useCallback<T extends () => {}>(fn: T, deps: any[]): T {
     return useMemo(() => fn, deps);
+}
+
+interface Context<T> {
+    Provider: ShmeactComponent<{context: T}>;
+    defaultValue: T;
+}
+export function createContext<T>(defaultValue: T): Context<T> {
+    return {
+        Provider: ({context, children}: {context: T, children?: ShmeactElementSpec[]|null}) => children ?? null,
+        defaultValue
+    };
+}
+export function useContext<T>(context: Context<T>): T {
+    if (!ShmeactComponentElement.currentlyRendering)
+        throw new Error('useContext called outside render');
+    return ShmeactComponentElement.currentlyRendering.useContext(context);
 }
 
 

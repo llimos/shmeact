@@ -20,9 +20,12 @@
 
 
 // Type of a Shmeact component function. Your components should satisfy this
-export type ShmeactComponent = (props?: ShmeactProps) => ShmeactElementSpec;
+export type ShmeactComponent<T extends ShmeactProps = {}> = (props: T & {children?: ShmeactElementSpec[] | null}) => ShmeactElementSpec;
 
-type ShmeactProps = Record<string, any>;
+interface ShmeactProps {
+    ref?: Ref;
+    [x:string]: any;
+}
 
 /** Props used by Shmeact itself, not to be put in the DOM */
 const internalProps = ['key', 'ref'];
@@ -719,6 +722,30 @@ export function useMemo<T = any>(fn: () => T, deps: any[]): T {
 // This is straight from the React docs!
 export function useCallback(fn: () => {}, deps: any[]) {
     return useMemo(() => fn, deps);
+}
+
+interface Context<T> {
+    Provider: ShmeactComponent<{context: T}>;
+    defaultValue: T;
+}
+export function createContext<T>(defaultValue: T): Context<T> {
+    return {
+        Provider: (props: {context: T, children?: ShmeactElementSpec[]|null}) => props?.children ?? null,
+        defaultValue
+    };
+}
+export function useContext<T>(context: Context<T>): T {
+    if (!currentlyRenderingElement)
+        throw new Error('Called useContext outside of render');
+    // Walk up the component tree, looking for a provider
+    let currentParent = currentlyRenderingElement.parent;
+    while (currentParent) {
+        if (isComponentElement(currentParent) && currentParent.component === context.Provider)
+            return currentParent.props!.context as T;
+        currentParent = currentParent.parent;
+    }
+    // If we don't find one, return the default value
+    return context.defaultValue;
 }
 
 
