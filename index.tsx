@@ -1,13 +1,19 @@
-import {createElement, Fragment, domRender, domUnmount, useEffect, useState, useRef} from "./shmOOact.js";
+import {createElement, Fragment, domRender, domUnmount, useEffect, useState, useRef, createContext, useContext} from "./shmeact.js";
+
+const MyContext = createContext('No context provided!');
 
 const MyComponent = () => {
     return <div className="hi">
-        <h1>hello <b>world</b></h1>
-        <p>This is a <button type="button" onClick={() => domUnmount(document.getElementById('app-root')!)}>button</button>. Click it to unmount {'everything'}</p>
-        <List/>
-        <Counter/>
-        <RefTester/>
-    </div>;
+            <h1>hello <b>world</b></h1>
+            <p>This is a <button type="button" onClick={() => domUnmount(document.getElementById('app-root')!)}>button</button>. Click it to unmount {'everything'}</p>
+            <List/>
+            <Counter/>
+            <RefTester/>
+            <MyContext.Provider context={'This is context A'}>
+                <ContextTester label="should be A" />
+            </MyContext.Provider>
+            <ContextTester label="should be default" />
+        </div>;
 }
 
 const List = () => {
@@ -63,6 +69,13 @@ const RefTester = () => {
         <h3>Uncontrolled element with ref</h3>
         <input ref={myRef} />
         <button onClick={() => alert(myRef.current!.value)}>Show value</button>
+    </div>;
+}
+
+const ContextTester = ({label}: {label: string}) => {
+    const value = useContext(MyContext);
+    return <div>
+        Context value ({label}): <b>{value}</b>
     </div>;
 }
 

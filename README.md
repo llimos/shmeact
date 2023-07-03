@@ -41,6 +41,7 @@ Note that DOM element typings come from TypeScript, and may differ slightly in R
 * `useRef` hook, and the `ref` prop for DOM elements
 * `useMemo` hook
 * `useCallback` hook
+* Context
 
 Other hooks might be added later, but there's enough here to prove the concept.
 
@@ -55,9 +56,13 @@ It will probably just blow up spectacularly.
 
 But if you have conformant React code, it should work fine.
 
+Class components and error boundaries are not supported.
+
 In terms of the function names, there is no separate ShmeactDOM package. Use `domRender` and `domUnmount` instead.
 
 Also, Shmeact doesn't do the special case properties that React does - e.g. `value` on an `<select>` instead of looking for `selected` on the `<option>`. What's in the DOM is what you get.
+
+Automatic JSX imports don't work either, you need to import `{createElement}` and `{Fragment}` yourself at the top of the file.
 
 ## Why "Shmeact"?
 Shmeact stands for *Shimon's Minimal React*. But it's equally appropriate as a response to those who say "React, shmeact!" This is the Shmeact of which they speak.
