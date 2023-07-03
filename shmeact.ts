@@ -499,12 +499,11 @@ function updateChildren(element: ShmeactDomElement | ShmeactArrayElement, update
         }
     }
     // Anything left in existing, remove
-    for (const originalChild of element.childNodes) {
+    for (const originalChild of element.childNodes)
         if (!reconciled.has(originalChild)) {
             remove(originalChild);
             element.childNodes.splice(element.childNodes.indexOf(originalChild), 1);
         }
-    }
 }
 
 /**
@@ -579,8 +578,8 @@ function remove(element: ShmeactElement) {
                 effect.teardown?.();
     }
     
-    if (Array.isArray(element))
-        for (const child of element)
+    if (isArrayElement(element))
+        for (const child of element.childNodes)
             remove(element);
 }
 
