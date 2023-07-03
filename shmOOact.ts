@@ -3,7 +3,7 @@ export type ShmeactComponent<T extends ShmeactProps = {}> = (props: T & {childre
 
 interface ShmeactProps {
     ref?: Ref;
-    [x:string]: unknown;
+    [x:string]: any;
 }
 
 /** Props used by Shmeact itself, not to be put in the DOM */
@@ -243,9 +243,7 @@ class ShmeactDomElement extends ShmeactElementWithChildren<ShmeactDomElementSpec
         if (this.props)
             for (const [key, val] of Object.entries(this.props)) {
                 // Attach the DOM element to the ref
-                //@ts-ignore
                 if (key === 'ref' && 'current' in val)
-                    //@ts-ignore
                     val.current = this.rendered;
 
                 // Ignore internal props - don't put them in the DOM
@@ -255,7 +253,6 @@ class ShmeactDomElement extends ShmeactElementWithChildren<ShmeactDomElementSpec
                 if (key.startsWith('on'))
                     // Event handlers
                     // React adds them all at the root, we're not going to do that
-                    //@ts-ignore
                     this.rendered.addEventListener(key.slice(2).toLowerCase(), val);
                 else
                     //@ts-ignore Real React knows what properties are allowed on each element type
@@ -293,11 +290,9 @@ class ShmeactDomElement extends ShmeactElementWithChildren<ShmeactDomElementSpec
                     const eventName = k.slice(2).toLowerCase();
                     if (!(k in newProps) || newProps[k] !== v) {
                         // If it's either changed or removed, remove it
-                        //@ts-ignore
                         this.rendered?.removeEventListener(eventName, v);
                         // If it's changed, add the new one back in
                         if (k in newProps)
-                            //@ts-ignore
                             this.rendered?.addEventListener(eventName, newProps[k]);
                     }
                 } else {  // Regular attribute
@@ -318,7 +313,6 @@ class ShmeactDomElement extends ShmeactElementWithChildren<ShmeactDomElementSpec
         // Whatever's left in the set is new
         for (const [nk, nv] of Object.entries(copy))
             if (nk.startsWith('on'))
-                //@ts-ignore
                 this.rendered?.addEventListener(nk.slice(2).toLowerCase(), nv);
         else
             //@ts-ignore We don't know if it's a real property or not
