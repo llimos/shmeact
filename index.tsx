@@ -1,4 +1,4 @@
-import {createElement, Fragment, domRender, domUnmount, useEffect, useState, useRef} from "./shmeact.js";
+import {createElement, Fragment, domRender, domUnmount, useEffect, useState, useRef} from "./shmOOact.js";
 
 const MyComponent = () => {
     return <div className="hi">
