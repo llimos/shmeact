@@ -1,7 +1,10 @@
 // Type of a Shmeact component function. Your components should satisfy this
-export type ShmeactComponent<T extends ShmeactProps = {}> = (props?: T) => ShmeactElementSpec;
+export type ShmeactComponent<T extends ShmeactProps = {}> = (props: T & {children?: ShmeactElementSpec[] | null}) => ShmeactElementSpec;
 
-type ShmeactProps = Record<string, any> | null;
+interface ShmeactProps {
+    ref?: Ref;
+    [x:string]: any;
+}
 
 /** Props used by Shmeact itself, not to be put in the DOM */
 const internalProps = ['key', 'ref'];
@@ -224,7 +227,7 @@ abstract class ShmeactElementWithChildren<T extends ShmeactElementSpec = Shmeact
 
 class ShmeactDomElement extends ShmeactElementWithChildren<ShmeactDomElementSpec> {
     component: string;
-    props: ShmeactProps;
+    props: ShmeactProps | null;
     
     rendered: Element | null = null;
     
@@ -421,7 +424,7 @@ class ShmeactTextElement extends ShmeactElement {
 
 class ShmeactComponentElement extends ShmeactElement<ShmeactComponentElementSpec> {
     component: ShmeactComponent;
-    props: ShmeactProps;
+    props: ShmeactProps | null;
     children: ShmeactElementSpec[] | null;
     
     rendered: ShmeactElement | null = null;
@@ -568,6 +571,18 @@ class ShmeactComponentElement extends ShmeactElement<ShmeactComponentElementSpec
         return this.memos[index].value as T;
     }
     
+    useContext<T>(context: Context<T>): T {
+        // Walk up the component tree, looking for a provider
+        let currentParent = this.parent;
+        while (!(currentParent instanceof ShmeactRootElement)) {
+            if (currentParent instanceof ShmeactComponentElement && currentParent.component === context.Provider)
+                return currentParent.props!.context as T;
+            currentParent = currentParent.parent;
+        }
+        // If we don't find one, return the default value
+        return context.defaultValue;
+    }
+
     depsChanged(oldDeps: any[] | undefined, newDeps: any[] | undefined): boolean {
         if (!oldDeps || !newDeps)
             return true;
@@ -636,6 +651,22 @@ export function useMemo<T = any>(fn: () => T, deps: any[]): T {
 // This is straight from the React docs!
 export function useCallback<T extends () => {}>(fn: T, deps: any[]): T {
     return useMemo(() => fn, deps);
+}
+
+interface Context<T> {
+    Provider: ShmeactComponent<{context: T}>;
+    defaultValue: T;
+}
+export function createContext<T>(defaultValue: T): Context<T> {
+    return {
+        Provider: ({context, children}: {context: T, children?: ShmeactElementSpec[]|null}) => children ?? null,
+        defaultValue
+    };
+}
+export function useContext<T>(context: Context<T>): T {
+    if (!ShmeactComponentElement.currentlyRendering)
+        throw new Error('useContext called outside render');
+    return ShmeactComponentElement.currentlyRendering.useContext(context);
 }
 
 
