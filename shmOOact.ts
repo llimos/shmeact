@@ -1,3 +1,24 @@
+// There are 4 types of element
+// - Component (can have children)
+// - DOM node (can have children)
+// - Text
+// - Array
+
+// Elements start out as an element spec. This is not the same type of object that goes in the virtual DOM,
+// though there are similarities.
+// This is what gets returned from a component's render method.
+// Component and DOM elements are objects that describe the props and children
+// Texts are just strings
+// Arrays are just arrays
+// A component can also return null, so that is also a valid spec
+
+// There is a difference between children of a component and children of a DOM element
+// children of a component are simply a prop that has been passed in in a different way
+// It's up to the component whether to render them or not
+// Children of a DOM node will always appear in the DOM - they are its children
+// even in the rendered result
+// We use `children` for the spec and `childNodes` for the actual children
+
 // Type of a Shmeact component function. Your components should satisfy this
 export type ShmeactComponent<T extends ShmeactProps = {}> = (props: T & {children?: ShmeactElementSpec[] | null}) => ShmeactElementSpec;
 
@@ -8,6 +29,11 @@ interface ShmeactProps {
 
 /** Props used by Shmeact itself, not to be put in the DOM */
 const internalProps = ['key', 'ref'];
+
+// The 4 different element specs
+// This is what's returned from rendering a component,
+// not what's in the virtual DOM
+
 interface ShmeactComponentElementSpec {
     type: 'component';
     component: ShmeactComponent;
@@ -26,13 +52,17 @@ type ShmeactArrayElementSpec = ShmeactElementSpec[];
 /** This is what could be returned from a render method */
 type ShmeactElementSpec = ShmeactComponentElementSpec | ShmeactDomElementSpec | ShmeactStringElementSpec | ShmeactArrayElementSpec | null;
 
+/**
+* Used during the render process to identify
+* where in the real DOM something should go
+*/
 interface DomLocation {
     domParent: Element;
     offset: number;
 }
 
 // Effects
-type EffectFunction = (() => void) | (() => (() => void));
+type EffectFunction = () => void | (() => (() => void));
 interface Effect {
     effect: EffectFunction;
     deps: unknown[] | undefined;
@@ -48,7 +78,11 @@ interface Memo<T = unknown> {
 
 
 // Classes representing Shmeact elements
+// These make up the virtual DOM
 
+/**
+Represents the DOM element that is the root of the tree
+*/
 class ShmeactRootElement {
     readonly dom: Element;
     #rendered: ShmeactElement | null = null;
@@ -77,12 +111,17 @@ class ShmeactRootElement {
     }
 }
 
+/** Base class of all Shmeact elements */
 abstract class ShmeactElement<T extends ShmeactElementSpec = ShmeactElementSpec> {
     domNodesCount: number = 0;
     constructor(public parent: ParentElement) { }
-    abstract create(domLocation?: DomLocation): void;
+    /** Creates the element in the real DOM */
+    abstract create(domLocation: DomLocation): void;
+    /** Updates the element in the virtual and real DOM */
     abstract update(spec: T, domLocation?: DomLocation): void;
+    /** Removes the element from the real DOM */
     abstract remove(): void;
+    /** Moves the element to a different place in the real DOM */
     abstract move(domLocation: DomLocation): void;
     
     /**
@@ -100,27 +139,33 @@ abstract class ShmeactElement<T extends ShmeactElementSpec = ShmeactElementSpec>
             this.parent.updateDomNodeCount(delta);
     }
     
+    /**
+    * Returns the real (DOM) location of this element,
+    * which consists of the real DOM parent, and
+    * how many other real DOM elements are before this one
+    */
     getDomLocation(): DomLocation {
-        let offset = 0;
+        let currentOffset = 0;
         if (this.parent instanceof ShmeactElementWithChildren) {
             for (const sibling of this.parent.childNodes) {
                 if (sibling === this)
                     break;
-                offset += sibling.domNodesCount;
+                currentOffset += sibling.domNodesCount;
             }
         }
         if (this.parent instanceof ShmeactDomElement)
-            return {domParent: this.parent.rendered!, offset};
+            return {domParent: this.parent.rendered!, offset: currentOffset};
         if (this.parent instanceof ShmeactRootElement)
-            return {domParent: this.parent.dom, offset};
+            return {domParent: this.parent.dom, offset: currentOffset};
         
-        const parentLocation = this.parent.getDomLocation();
-        parentLocation.offset += offset;
-        return parentLocation;
+        const {domParent, offset} = this.parent.getDomLocation();
+        return {domParent, offset: offset + currentOffset};
     }
     
+    /** Returns true if the provided spec is valid for this element type */
     static isSpec: (spec: ShmeactElementSpec) => boolean;
     
+    /** Creates an element given a spec */
     static factory(spec: Exclude<ShmeactElementSpec, null>, parent: ParentElement): ShmeactElement {
         if (ShmeactDomElement.isSpec(spec))
             return new ShmeactDomElement(spec, parent);
@@ -178,7 +223,7 @@ abstract class ShmeactElementWithChildren<T extends ShmeactElementSpec = Shmeact
             newIndex -= nulls; // The index we want it to end up in
 
             // See if we have it in existing
-            // Text element matches almost anything, so do that last
+            // Text element matches almost any spec, so do that last
             const existing =
                 this.childNodes.find(c => !reconciled.has(c) && !(c instanceof ShmeactTextElement) && c.canUpdateWith(child))
                     ?? this.childNodes.find(c => !reconciled.has(c) && c instanceof ShmeactTextElement && c.canUpdateWith(child));
@@ -187,8 +232,8 @@ abstract class ShmeactElementWithChildren<T extends ShmeactElementSpec = Shmeact
             if (!existing) {
                 const created = ShmeactElement.factory(child, this);
                 this.childNodes.splice(newIndex, 0, created);
+                created.create({domParent, offset});
                 offset += created.domNodesCount;
-                created.create();
                 reconciled.add(created);
             } else {
                 // If we do,
@@ -238,29 +283,14 @@ class ShmeactDomElement extends ShmeactElementWithChildren<ShmeactDomElementSpec
     }
     
     create(domLocation: DomLocation) {
+        // Create a real DOM element
         this.rendered = document.createElement(this.component);
 
-        if (this.props)
-            for (const [key, val] of Object.entries(this.props)) {
-                // Attach the DOM element to the ref
-                if (key === 'ref' && 'current' in val)
-                    val.current = this.rendered;
-
-                // Ignore internal props - don't put them in the DOM
-                if (internalProps.includes(key))
-                    continue;
-
-                if (key.startsWith('on'))
-                    // Event handlers
-                    // React adds them all at the root, we're not going to do that
-                    this.rendered.addEventListener(key.slice(2).toLowerCase(), val);
-                else
-                    //@ts-ignore Real React knows what properties are allowed on each element type
-                    this.rendered[key] = val;
-            }
+        // Add attributes and events
+        this.updateAttributes(null, this.props)
         
         // Attach to real DOM
-        appendChild(this.rendered, domLocation ?? this.getDomLocation());
+        appendChild(this.rendered, domLocation);
 
         // Update DOM node count for this and parents
         this.updateDomNodeCount(1);
@@ -270,61 +300,75 @@ class ShmeactDomElement extends ShmeactElementWithChildren<ShmeactDomElementSpec
     }
     
     canUpdateWith(spec: ShmeactElementSpec): spec is ShmeactDomElementSpec {
-        return super.canUpdateWith(spec) && spec.component === this.component;
+        // Key has to match if it exists
+        return super.canUpdateWith(spec) && spec.component === this.component && spec.props?.key === this.props?.key;
     }
 
-    update(spec: ShmeactDomElementSpec) {
-        // Update attributes
-        const newProps = spec.props ?? {};
-        // Check for added, removed, and changed
-        const copy = {...newProps};
-
-        if (this.props)
-            for (const [k, v] of Object.entries(this.props)) {
-                // Ignore internal props - don't put them in the DOM
-                if (internalProps.includes(k))
-                    continue;
-
-                // Different behaviour for attributes and events
-                if (k.startsWith('on')) {  // Event
-                    const eventName = k.slice(2).toLowerCase();
-                    if (!(k in newProps) || newProps[k] !== v) {
-                        // If it's either changed or removed, remove it
-                        this.rendered?.removeEventListener(eventName, v);
-                        // If it's changed, add the new one back in
-                        if (k in newProps)
-                            this.rendered?.addEventListener(eventName, newProps[k]);
-                    }
-                } else {  // Regular attribute
-                    if (k in newProps) {
-                        // Exists in old and new
-                        if (v !== newProps[k])
-                            // Changed in new
-                            //@ts-ignore We don't know if it's a real property or not
-                            this.rendered[k] = newProps[k];
-                        delete copy[k];
-                    } else {
-                        // Removed in new
-                        //@ts-ignore We don't know if it's a real property or not
-                        this.rendered[k] = undefined; // Should reset to default
-                    }
-                }
-            }
-        // Whatever's left in the set is new
-        for (const [nk, nv] of Object.entries(copy))
-            if (nk.startsWith('on'))
-                this.rendered?.addEventListener(nk.slice(2).toLowerCase(), nv);
-        else
-            //@ts-ignore We don't know if it's a real property or not
-            this.rendered[nk] = nv;
-
-        // Update vdom props
+    update(spec: ShmeactDomElementSpec): void {
+        this.updateAttributes(this.props, spec.props);
         this.props = spec.props;
-
-        // Update children
         this.updateChildren(spec.children, {domParent: this.rendered!, offset: 0});
     }
-    
+
+    updateAttributes(oldProps: ShmeactProps | null, newProps: ShmeactProps | null): void {
+        if (!this.rendered)
+            throw new Error('updateAttributes called on non-rendered element');
+
+        oldProps = oldProps ?? {};
+        newProps = newProps ?? {};
+
+        // Go through the new props, and add or update where necessary
+        for (const [k, v] of Object.entries(newProps)) {
+            // Ref
+            if (k === 'ref' && !oldProps.ref && 'current' in v)
+                v.current = this.rendered;
+
+            if (internalProps.includes(k)) // includes ref
+                continue;
+
+            if (v !== oldProps[k]) { // Changed or added
+                if (k.startsWith('on')) { // Event
+                    // Event
+                    const eventName = k.slice(2).toLowerCase();
+                    // Need to remove the old one if there is one
+                    if (oldProps[k])
+                        this.rendered.removeEventListener(eventName, oldProps[k]);
+                    // Add the new one
+                    this.rendered.addEventListener(eventName, v);
+
+                } else if (k === 'style') { // Style is a special case
+                    const oldStyle: any = oldProps.style ?? {};
+                    for (const [sk, sv] of Object.entries(v))
+                        if (sv !== oldStyle[sk])
+                            //@ts-ignore Add or update style
+                            this.rendered.style[sk] = sv;
+                    for (const sk of Object.keys(oldStyle))
+                        if (!(sk in v))
+                            //@ts-ignore Been removed
+                            this.rendered.style[sk] = null;
+
+                } else { // Anything else
+                    //@ts-ignore because we're not checking which attributes are valid
+                    this.rendered[k] = v;
+                }
+            }
+        }
+        // Check for removed
+        for (const [k, v] of Object.entries(oldProps))
+            if (!internalProps.includes(k) && v !== null && v !== undefined && !(k in newProps))
+                if (k === 'ref' && 'current' in v)
+                    v.current = undefined;
+                else if (k.startsWith('on'))
+                    this.rendered.removeEventListener(k.slice(2).toLowerCase(), v);
+                else if (k === 'style')
+                    for (const sk of Object.keys(v))
+                        //@ts-ignore
+                        (this.rendered as HTMLElement).style[sk] = undefined;
+                else
+                    //@ts-ignore
+                    this.rendered[k] = undefined;
+    }
+
     remove() {
         this.removeChildren();
         
@@ -352,7 +396,7 @@ class ShmeactDomElement extends ShmeactElementWithChildren<ShmeactDomElementSpec
 
 class ShmeactArrayElement extends ShmeactElementWithChildren<ShmeactArrayElementSpec> {
     create(domLocation: DomLocation): void {
-        this.createChildren(domLocation ?? this.getDomLocation());
+        this.createChildren(domLocation);
     }
     
     update(spec: ShmeactArrayElementSpec): void {
@@ -382,9 +426,9 @@ class ShmeactTextElement extends ShmeactElement {
     constructor(public value: ShmeactStringElementSpec, parent: ParentElement) {
         super(parent);
     }
-    create(domLocation?: DomLocation): void {
+    create(domLocation: DomLocation): void {
         this.rendered = document.createTextNode(String(this.value));
-        appendChild(this.rendered, domLocation ?? this.getDomLocation());
+        appendChild(this.rendered, domLocation);
 
         // Update DOM node count
         this.updateDomNodeCount(1);
@@ -448,12 +492,13 @@ class ShmeactComponentElement extends ShmeactElement<ShmeactComponentElementSpec
         this.children = spec.children;
     }
     
-    create(domLocation?: DomLocation): void {
+    create(domLocation: DomLocation): void {
         this.render(domLocation);
     }
     
     canUpdateWith(spec: ShmeactElementSpec): spec is ShmeactComponentElementSpec {
-        return super.canUpdateWith(spec) && spec.component === this.component;
+        // Key has to match if it exists
+        return super.canUpdateWith(spec) && spec.component === this.component && spec.props?.key === this.props?.key;
     }
     
     update(spec: ShmeactComponentElementSpec) {
@@ -487,7 +532,7 @@ class ShmeactComponentElement extends ShmeactElement<ShmeactComponentElementSpec
             // Add new
             if (renderResult) {
                 this.rendered = ShmeactElement.factory(renderResult, this);
-                this.rendered.create(domLocation);
+                this.rendered.create(domLocation ?? this.getDomLocation());
             } else {
                 this.rendered = null;
             }
@@ -511,8 +556,11 @@ class ShmeactComponentElement extends ShmeactElement<ShmeactComponentElementSpec
         this.rendered?.move(domLocation);
     }
     
+
     // Hooks
-    
+    // The global useXXX functions look up which is the currently rendering component
+    // and forward the call to here
+
     useState<T>(initital: T): [T, SetStateFunction<T>];
     useState<T>(): [T|undefined, SetStateFunction<T>];
     useState<T>(initial?: T) {
@@ -576,6 +624,7 @@ class ShmeactComponentElement extends ShmeactElement<ShmeactComponentElementSpec
         let currentParent = this.parent;
         while (!(currentParent instanceof ShmeactRootElement)) {
             if (currentParent instanceof ShmeactComponentElement && currentParent.component === context.Provider)
+                // If we found it, return the value of the 'context' prop
                 return currentParent.props!.context as T;
             currentParent = currentParent.parent;
         }
@@ -615,9 +664,12 @@ class ShmeactComponentElement extends ShmeactElement<ShmeactComponentElementSpec
 
 type ParentElement = ShmeactElementWithChildren | ShmeactComponentElement | ShmeactRootElement; 
 
+/**
+* Place the actual element in the DOM at the specified offset
+*/
 function appendChild(node: Node, domLocation: DomLocation): void {
     // Attach to real DOM
-    if (!domLocation.offset)
+    if (domLocation.offset === 0)
         domLocation.domParent.prepend(node);
     else
         domLocation.domParent.childNodes[domLocation.offset - 1].after(node);
@@ -631,9 +683,13 @@ type SetStateFunction<T> = ((newval: T | ((oldval: T) => T)) => void)
 export function useState<T>(initital: T): [T, SetStateFunction<T>];
 export function useState<T>(): [T|undefined, SetStateFunction<T>];
 export function useState<T>(initial?: T) {
+    if (!ShmeactComponentElement.currentlyRendering)
+        throw new Error('useState called outside render');
     return ShmeactComponentElement.currentlyRendering?.useState(initial);
 }
 export function useEffect(effect: EffectFunction, deps?: any[]): void {
+    if (!ShmeactComponentElement.currentlyRendering)
+        throw new Error('useEffect called outside render');
     return ShmeactComponentElement.currentlyRendering?.useEffect(effect, deps);
 }
 export function useRef<T>(): Ref<T|undefined>;
@@ -653,13 +709,20 @@ export function useCallback<T extends () => {}>(fn: T, deps: any[]): T {
     return useMemo(() => fn, deps);
 }
 
+
+// Context
+
+// createContext creates a component that has a context prop
+// useContext looks up the tree to find that component and retrieve its prop
 interface Context<T> {
     Provider: ShmeactComponent<{context: T}>;
     defaultValue: T;
 }
-export function createContext<T>(defaultValue: T): Context<T> {
+export function createContext<T>(): Context<T | undefined>;
+export function createContext<T>(defaultValue: T): Context<T>;
+export function createContext<T>(defaultValue?: T) {
     return {
-        Provider: ({context, children}: {context: T, children?: ShmeactElementSpec[]|null}) => children ?? null,
+        Provider: ({children}: {children?: ShmeactElementSpec[]|null}) => children ?? null,
         defaultValue
     };
 }
@@ -677,8 +740,12 @@ export function createRoot(domElement: Element): ShmeactRootElement {
     // Clear out whatever's there first
     domElement.replaceChildren();
     const root = new ShmeactRootElement(domElement);
+
     // Shmeact Devtools! Uncomment to see the VDOM in the console
-    console.dir(root);
+    console.log('Welcome to Shmeact Devtools!')
+    console.log('Rendering to', domElement);
+    console.dir(root); // Should dynamically update in console so you see the whole VDOM
+
     return root;
 }
 

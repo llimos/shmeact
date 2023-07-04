@@ -30,7 +30,7 @@ Watch mode is also available as an alternative to building
 
 Start coding! The library is in shmeact.ts, and your code is in index.ts. Use it just like React.
 
-Note that DOM element typings come from TypeScript, and may differ slightly in React. If this is the case, edit the `types.d.ts` file accordingly.
+Note that DOM element typings come from TypeScript, and may differ slightly in React or have bugs. If this is the case, edit the `types.d.ts` file accordingly.
 
 ## What's supported
 * JSX, with Typescript configured appropriately

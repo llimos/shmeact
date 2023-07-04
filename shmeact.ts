@@ -17,6 +17,7 @@
 // It's up to the component whether to render them or not
 // Children of a DOM node will always appear in the DOM - they are its children
 // even in the rendered result
+// We use `children` for the spec and `childNodes` for the actual children
 
 
 // Type of a Shmeact component function. Your components should satisfy this
@@ -29,6 +30,11 @@ interface ShmeactProps {
 
 /** Props used by Shmeact itself, not to be put in the DOM */
 const internalProps = ['key', 'ref'];
+
+// The 4 different element specs
+// This is what's returned from rendering a component,
+// not what's in the virtual DOM
+
 interface ShmeactComponentElementSpec {
     type: 'component';
     component: ShmeactComponent;
@@ -108,11 +114,9 @@ interface Memo<T = any> {
 // which might be a Component element spec or a DOM element spec
 export function createElement(component: ShmeactComponent | string, props: ShmeactProps, ...children: ShmeactElementSpec[]): ShmeactComponentElementSpec | ShmeactDomElementSpec {
     return typeof component === 'function' ? {
-        type: 'component',
-        component, props, children
+        type: 'component', component, props, children
     } : {
-        type: 'dom',
-        component, props, children
+        type: 'dom', component, props, children
     };
 }
 
@@ -149,7 +153,7 @@ export function domRender(root: Element, element: ShmeactElementSpec): void {
     // Create a VDOM node representing the root
     const rootNode: ShmeactDomElement = {
         type: 'dom',
-        component: root.tagName,
+        component: root.localName,
         props: {},
         childNodes: [],
         dom: root,
@@ -159,6 +163,11 @@ export function domRender(root: Element, element: ShmeactElementSpec): void {
     
     // Add it to our roots map
     shmeactRoots.set(root, rootNode);
+
+    // Shmeact Devtools! Uncomment to see the VDOM in the console
+    console.log('Welcome to Shmeact Devtools!')
+    console.log('Rendering to', root);
+    console.dir(rootNode); // Should dynamically update in console so you see the whole VDOM
 
     // Render
     if (element !== null)
@@ -265,24 +274,7 @@ function create(elementSpec: NonNullable<ShmeactElementSpec>, parent: ParentElem
     if (isDomElement(elementSpec)) {
         const domElement = document.createElement(elementSpec.component);
         if (elementSpec.props)
-            for (const [key, val] of Object.entries(elementSpec.props)) {
-                // Attach the DOM element to the ref
-                if (key === 'ref' && 'current' in val)
-                    val.current = domElement;
-                
-                // Ignore internal props - don't put them in the DOM
-                if (internalProps.includes(key))
-                    continue;
-
-                if (key.startsWith('on'))
-                    // Event handlers
-                    // React adds them all at the root, we're not going to do that
-                    domElement.addEventListener(key.slice(2).toLowerCase(), val);
-                else
-                    //@ts-ignore Real React knows what properties are allowed on each element type
-                    domElement[key] = val;
-            }
-                
+            updateDomElementAttributes(domElement, null, elementSpec.props);
         // Attach to real DOM
         appendChild(domElement, domParent, offset);
         
@@ -390,50 +382,8 @@ function update(existing: ShmeactElement, updated: ShmeactElementSpec): void {
     
     // DOM element update
     else if (isDomElement(existing) && isDomElement(updated)) {
-        // Update attributes
-        const newProps = updated.props ?? {};
-        // Check for added, removed, and changed
-        const copy = {...newProps};
+        updateDomElementAttributes(existing.dom, existing.props, updated.props);
         
-        if (existing.props)
-            for (const [k, v] of Object.entries(existing.props)) {
-                // Ignore internal props - don't put them in the DOM
-                if (internalProps.includes(k))
-                    continue;
-                
-                // Different behaviour for attributes and events
-                if (k.startsWith('on')) {  // Event
-                    const eventName = k.slice(2).toLowerCase();
-                    if (!(k in newProps) || newProps[k] !== v) {
-                        // If it's either changed or removed, remove it
-                        existing.dom?.removeEventListener(eventName, v);
-                        // If it's changed, add the new one back in
-                        if (k in newProps)
-                            existing.dom?.addEventListener(eventName, newProps[k]);
-                    }
-                } else {  // Regular attribute
-                    if (k in newProps) {
-                        // Exists in old and new
-                        if (v !== newProps[k])
-                            // Changed in new
-                            //@ts-ignore We don't know if it's a real property or not
-                            existing.dom[k] = newProps[k];
-                        delete copy[k];
-                    } else {
-                        // Removed in new
-                        //@ts-ignore We don't know if it's a real property or not
-                        existing.dom[k] = undefined; // Should reset to default
-                    }
-                }
-            }
-        // Whatever's left in the set is new
-        for (const [nk, nv] of Object.entries(copy))
-            if (nk.startsWith('on'))
-                existing.dom?.addEventListener(nk.slice(2).toLowerCase(), nv);
-            else
-                //@ts-ignore We don't know if it's a real property or not
-                existing.dom[nk] = nv;
-            
         // Update vdom props
         existing.props = updated.props;
         
@@ -508,6 +458,62 @@ function updateChildren(element: ShmeactDomElement | ShmeactArrayElement, update
             element.childNodes.splice(element.childNodes.indexOf(originalChild), 1);
         }
 }
+
+function updateDomElementAttributes(element: Element, oldProps: ShmeactProps | null, newProps: ShmeactProps | null): void {
+    oldProps = oldProps ?? {};
+    newProps = newProps ?? {};
+
+    for (const [k, v] of Object.entries(newProps)) {
+        // Ref
+        if (k === 'ref' && !oldProps.ref && 'current' in v)
+            v.current = element;
+
+        if (internalProps.includes(k)) // includes ref
+            continue;
+
+        if (v !== oldProps[k]) { // Changed or added
+            if (k.startsWith('on')) { // Event
+                // Event
+                const eventName = k.slice(2).toLowerCase();
+                // Need to remove the old one if there is one
+                if (oldProps[k])
+                    element.removeEventListener(eventName, oldProps[k]);
+                // Add the new one
+                element.addEventListener(eventName, v);
+
+            } else if (k === 'style') { // Style is a special case
+                const oldStyle: any = oldProps.style ?? {};
+                for (const [sk, sv] of Object.entries(v))
+                    if (sv !== oldStyle[sk])
+                        //@ts-ignore Add or update style
+                        element.style[sk] = sv;
+                for (const sk of Object.keys(oldStyle))
+                    if (!(sk in v))
+                        //@ts-ignore Been removed
+                        element.style[sk] = null;
+
+            } else { // Anything else
+                //@ts-ignore because we're not checking which attributes are valid
+                element[k] = v;
+            }
+        }
+    }
+    // Check for removed
+    for (const [k, v] of Object.entries(oldProps))
+        if (!internalProps.includes(k) && v !== null && v !== undefined && !(k in newProps))
+            if (k === 'ref' && 'current' in v)
+                v.current = undefined;
+            else if (k.startsWith('on'))
+                element.removeEventListener(k.slice(2).toLowerCase(), v);
+            else if (k === 'style')
+                for (const sk of Object.keys(v))
+                    //@ts-ignore
+                    element.style[sk] = undefined;
+            else
+                //@ts-ignore
+                element[k] = undefined;
+}
+
 
 /**
 * Find the equivalent real element from an array, given an element spec

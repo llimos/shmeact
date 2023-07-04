@@ -9,14 +9,16 @@ declare namespace JSX {
     }
     
     type ShmeactifyEventName<E> = E extends `on${infer N}` ? `on${Capitalize<N>}` : E;
-    type ShmeactifyElementEvents<E> = {[K in keyof E as ShmeactifyEventName<K>]: E[K]}
+    type ShmeactifyElement<E> = {
+        [K in keyof E as ShmeactifyEventName<K>]: Partial<E[K]>
+    }
 
     // This is the one TypeScript uses internally to validate JSX
     // React has its own set of HTML validators but we're lazy so we're using TypeScript's
     type IntrinsicElements = {
         [K in keyof HTMLElementTagNameMap]:
             Partial<
-                Omit<ShmeactifyElementEvents<HTMLElementTagNameMap[K]>,
+                Omit<ShmeactifyElement<HTMLElementTagNameMap[K]>,
                     keyof ElementExtensions[K & keyof ElementExtensions]
                     & keyof ExtraProps>
                 & ExtraProps

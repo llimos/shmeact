@@ -1,4 +1,5 @@
-import {createElement, Fragment, domRender, domUnmount, useEffect, useState, useRef, createContext, useContext} from "./shmeact.js";
+//import {createElement, Fragment, domRender, domUnmount, useEffect, useState, useRef, createContext, useContext} from "./shmeact.js";
+import {createElement, Fragment, domRender, domUnmount, useEffect, useState, useRef, createContext, useContext} from "./shmOOact.js";
 
 const MyContext = createContext('No context provided!');
 
@@ -9,6 +10,7 @@ const MyComponent = () => {
             <List/>
             <Counter/>
             <RefTester/>
+            <h3>Context</h3>
             <MyContext.Provider context={'This is context A'}>
                 <ContextTester label="should be A" />
             </MyContext.Provider>
@@ -20,7 +22,7 @@ const List = () => {
     const [reverseElementOrder, setReverseElementOrder] = useState(false);
     const [randomOrder, setRandomOrder] = useState(false);
     
-    const listElements = [1, 2, 3, 4, 5].map(n => <li key={n}>Item {n}</li>);
+    const listElements = [1, 2, 3, 4, 5].map(n => <li key={n}>Item {n} <input placeholder="Type here to prove it's the same element being moved" style={{width: '500px', maxWidth: 'none'}}/></li>);
     
     if (randomOrder)
         listElements.sort(() => 0.5 - Math.random());
@@ -63,7 +65,7 @@ const CounterDisplay = ({count}: {count: number}) => <div className="hi">The cou
 
 const RefTester = () => {
     const myRef = useRef<HTMLInputElement>();
-    useEffect(() => console.dir(myRef.current));
+    useEffect(() => console.dir(myRef.current), [myRef.current]);
     
     return <div>
         <h3>Uncontrolled element with ref</h3>

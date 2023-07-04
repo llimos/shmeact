@@ -10,7 +10,6 @@
   },
   "scripts": {
     "build": "tsc",
-    "start": "serve",
     "watch": "tsc -w"
   }
 }
