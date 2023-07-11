@@ -290,9 +290,6 @@ class ShmeactDomElement extends ShmeactElementWithChildren<ShmeactDomElementSpec
     create(domLocation: DomLocation) {
         // Create a real DOM element
         this.rendered = document.createElement(this.component);
-
-        // Add attributes and events
-        this.updateAttributes(null, this.props)
         
         // Attach to real DOM
         appendChild(this.rendered, domLocation);
@@ -302,6 +299,9 @@ class ShmeactDomElement extends ShmeactElementWithChildren<ShmeactDomElementSpec
         
         // Children
         this.createChildren({domParent: this.rendered, offset: 0});
+
+        // Add attributes and events
+        this.updateAttributes(null, this.props)
     }
     
     canUpdateWith(spec: ShmeactElementSpec): spec is ShmeactDomElementSpec {
@@ -310,9 +310,9 @@ class ShmeactDomElement extends ShmeactElementWithChildren<ShmeactDomElementSpec
     }
 
     update(spec: ShmeactDomElementSpec): void {
+        this.updateChildren(spec.children, {domParent: this.rendered!, offset: 0});
         this.updateAttributes(this.props, spec.props);
         this.props = spec.props;
-        this.updateChildren(spec.children, {domParent: this.rendered!, offset: 0});
     }
 
     updateAttributes(oldProps: ShmeactProps | null, newProps: ShmeactProps | null): void {
@@ -562,7 +562,11 @@ class ShmeactComponentElement extends ShmeactElement<ShmeactComponentElementSpec
         this.rendered?.remove();
         if (this.effects)
             for (const effect of this.effects)
-                effect.teardown?.();
+                try {
+                    effect.teardown?.();
+                } catch (e) {
+                    console.error('Error running effect teardown', e);
+                }
     }
     
     move(domLocation: DomLocation) {

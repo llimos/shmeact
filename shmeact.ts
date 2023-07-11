@@ -312,8 +312,6 @@ function create(elementSpec: NonNullable<ShmeactElementSpec>, parent: ParentElem
     // DOM element
     if (isDomElement(elementSpec)) {
         const domElement = document.createElement(elementSpec.component);
-        if (elementSpec.props)
-            updateDomElementAttributes(domElement, null, elementSpec.props);
         // Attach to real DOM
         appendChild(domElement, domParent, offset);
         
@@ -341,6 +339,10 @@ function create(elementSpec: NonNullable<ShmeactElementSpec>, parent: ParentElem
                     childOffset += renderedChild.domNodesCount;
                 }
         
+        // Attributes
+        if (elementSpec.props)
+            updateDomElementAttributes(domElement, null, elementSpec.props);
+
         return rendered;
     }
     
@@ -435,13 +437,14 @@ function update(existing: ShmeactElement, updated: ShmeactElementSpec): void {
     
     // DOM element update
     else if (isDomElement(existing) && isDomElement(updated)) {
-        updateDomElementAttributes(existing.dom, existing.props, updated.props);
-        
-        // Update vdom props
-        existing.props = updated.props;
-        
         // Update children
         updateChildren(existing, updated.children ?? []);
+
+        // Update attributes
+        updateDomElementAttributes(existing.dom, existing.props, updated.props);
+
+        // Update vdom props
+        existing.props = updated.props;
     }
     
     // Array - we just need to match the child components correctly, same as for DOM node children
@@ -638,7 +641,11 @@ function remove(element: ShmeactElement) {
         // Run any teardown effects
         if (element.effects)
             for (const effect of element.effects)
-                effect.teardown?.();
+                try {
+                    effect.teardown?.();
+                } catch (e) {
+                    console.error('Error running effect teardown', e);
+                }
 
         return;
     }
