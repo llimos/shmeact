@@ -96,6 +96,9 @@ interface ShmeactRootElement {
     type: 'root';
     dom: Element;
     rendered: ShmeactElement | null;
+}
+/** This is the public interface that gets returned from createRoot */
+interface ShmeactRootHandle {
     render(spec: ShmeactElementSpec): void;
     unmount(): void;
 }
@@ -155,24 +158,14 @@ function isRootElement(element: ShmeactElement | ShmeactRootElement): element is
 // It all starts here - this is where we mount the initial component
 
 // New API
-export function createRoot(rootElement: Element): ShmeactRootElement {
+export function createRoot(rootElement: Element): ShmeactRootHandle {
     rootElement.replaceChildren();
 
+    // This is the real root node, that forms the root of our virtual DOM
     const rootNode: ShmeactRootElement =  {
         type: 'root',
         dom: rootElement,
         rendered: null,
-        render(spec: ShmeactElementSpec) {
-            if (canUpdate(this.rendered, spec))
-                update(this.rendered, spec)
-            else if (spec)
-                this.rendered = create(spec, this, this.dom, 0);
-        },
-        unmount() {
-            if (this.rendered)
-                remove(this.rendered);
-            this.rendered = null;
-        }
     };
 
     // Shmeact Devtools! Uncomment to see the VDOM in the console
@@ -180,13 +173,30 @@ export function createRoot(rootElement: Element): ShmeactRootElement {
     console.log('Rendering to', rootElement);
     console.dir(rootNode); // Should dynamically update in console so you see the whole VDOM
 
-    return rootNode;
+    // This is a handle that lets the outside world do stuff with our root node
+    return {
+        render(spec: ShmeactElementSpec) {
+            if (canUpdate(rootNode.rendered, spec))
+                update(rootNode.rendered, spec)
+            else {
+                if (rootNode.rendered)
+                    remove(rootNode.rendered);
+                if (spec)
+                    rootNode.rendered = create(spec, rootNode, rootNode.dom, 0);
+            }
+        },
+        unmount() {
+            if (rootNode.rendered)
+                remove(rootNode.rendered);
+            rootNode.rendered = null;
+        }
+    }
 }
 
 // Old API
 
 // Map of mounted roots. Used only for unmounting
-const shmeactRoots = new Map<Element, ShmeactRootElement>();
+const shmeactRoots = new Map<Element, ShmeactRootHandle>();
 
 /** How we mount the initial component - equivalent of ReactDOM.render */
 export function domRender(root: Element, element: ShmeactElementSpec): void {

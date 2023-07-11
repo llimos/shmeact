@@ -111,6 +111,11 @@ class ShmeactRootElement {
     }
 }
 
+interface ShmeactRootHandle {
+    render(spec: ShmeactElementSpec): void;
+    unmount(): void;
+}
+
 /** Base class of all Shmeact elements */
 abstract class ShmeactElement<T extends ShmeactElementSpec = ShmeactElementSpec> {
     domNodesCount: number = 0;
@@ -747,7 +752,7 @@ export function useContext<T>(context: Context<T>): T {
 // Render process
 
 // New API
-export function createRoot(domElement: Element): ShmeactRootElement {
+export function createRoot(domElement: Element): ShmeactRootHandle {
     // Clear out whatever's there first
     domElement.replaceChildren();
     const root = new ShmeactRootElement(domElement);
@@ -757,13 +762,20 @@ export function createRoot(domElement: Element): ShmeactRootElement {
     console.log('Rendering to', domElement);
     console.dir(root); // Should dynamically update in console so you see the whole VDOM
 
-    return root;
+    return {
+        render(spec: ShmeactElementSpec): void {
+            root.render(spec);
+        },
+        unmount(): void {
+            root.unmount();
+        }
+    };
 }
 
 // Old API
 
 // Map of mounted roots. Used only for unmounting
-const shmeactRoots = new Map<Element, ShmeactRootElement>();
+const shmeactRoots = new Map<Element, ShmeactRootHandle>();
 
 export function domRender(root: Element, element: ShmeactElementSpec): void {
     const rootElement = createRoot(root);
