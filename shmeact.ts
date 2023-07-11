@@ -68,6 +68,7 @@ interface ShmeactComponentElement extends ShmeactComponentElementSpec, ShmeactEl
     rendered?: ShmeactElement | null; // The result of rendering
     state: any[];
     effects: Effect[];
+    layoutEffects: Effect[];
     refs: Ref[];
     memos: Memo[];
 }
@@ -221,8 +222,8 @@ export function domUnmount(root: Element): void {
 
 // Need to know which one is currently rendering, to handle hooks
 let currentlyRenderingElement: ShmeactComponentElement | null = null,
-    currentStateIndex: number, currentEffectIndex: number, currentRefIndex: number, currentMemoIndex: number,
-    currentEffectQueue: Effect[];
+    currentStateIndex: number, currentEffectIndex: number, currentLayoutEffectIndex: number, currentRefIndex: number, currentMemoIndex: number,
+    currentEffectQueue: Effect[], currentLayoutEffectQueue: Effect[];
 
 /**
 * Render a Shmeact component
@@ -231,11 +232,13 @@ let currentlyRenderingElement: ShmeactComponentElement | null = null,
 function renderComponentElement(element: ShmeactComponentElement, domParent?: Element, offset?: number): ShmeactElementSpec {
     // Set up global variables
     currentlyRenderingElement = element;
-    currentStateIndex = currentEffectIndex = currentRefIndex = currentMemoIndex = 0;
+    currentStateIndex = currentEffectIndex = currentLayoutEffectIndex = currentRefIndex = currentMemoIndex = 0;
     // Since a parent component may be in the middle of rendering and have its effect queue
     // we swap them and swap them back at the end
     const oldEffectQueue = currentEffectQueue;
     currentEffectQueue = [];
+    const oldLayoutEffectQueue = currentLayoutEffectQueue;
+    currentLayoutEffectQueue = [];
     
     // Do the render
     const {component, props, children} = element;
@@ -267,7 +270,14 @@ function renderComponentElement(element: ShmeactComponentElement, domParent?: El
             : null;
     }
     
-    // Done rendering and reconciling to DOM. Run effects on the next tick
+    // Done rendering and reconciling to DOM. Run effects
+
+    // Layout effects run before next paint
+    if (currentLayoutEffectQueue.length > 0) {
+        const myLayoutEffectQueue = currentLayoutEffectQueue;
+        window.requestAnimationFrame(() => myLayoutEffectQueue.forEach(runEffect));
+    }
+    // Regular effects run on next tick
     if (currentEffectQueue.length > 0) {
         const myEffectQueue = currentEffectQueue;
         window.setTimeout(() => myEffectQueue.forEach(runEffect));
@@ -275,6 +285,7 @@ function renderComponentElement(element: ShmeactComponentElement, domParent?: El
     
     // Restore previous effect queue
     currentEffectQueue = oldEffectQueue;
+    currentLayoutEffectQueue = oldLayoutEffectQueue;
     
     return renderResult;
 }
@@ -341,6 +352,7 @@ function create(elementSpec: NonNullable<ShmeactElementSpec>, parent: ParentElem
             domNodesCount: 0,
             state: [],
             effects: [],
+            layoutEffects: [],
             refs: [],
             memos: [],
         };
@@ -721,23 +733,28 @@ export function useState<T>(initial?: T) {
 }
 
 export function useEffect(effect: EffectFunction, deps?: any[]): void {
+    useEffectShared('effects', currentEffectIndex++, currentEffectQueue, effect, deps);
+}
+export function useLayoutEffect(effect: EffectFunction, deps?: any[]): void {
+    useEffectShared('layoutEffects', currentLayoutEffectIndex++, currentLayoutEffectQueue, effect, deps);
+}
+function useEffectShared(effectArrayProperty: 'effects'|'layoutEffects', index: number, effectQueue: Effect[], effect: EffectFunction, deps?: any[]): void {
     if (!currentlyRenderingElement)
         throw new Error('Called useEffect outside of render');
     
-    const element = currentlyRenderingElement,
-          index = currentEffectIndex++;
+    const effectArray = currentlyRenderingElement[effectArrayProperty];
 
-    let entry = element.effects[index];
+    let entry = effectArray[index];
     // If this is the first time, add it to the effects array
     // and the queue for effects to run
     if (!entry) {
-        entry = element.effects[index] = {effect, deps};
-        currentEffectQueue.push(entry);
+        entry = effectArray[index] = {effect, deps};
+        effectQueue.push(entry);
     } else if (depsChanged(entry.deps, deps)) {
         // Dependencies changed - replace effect and deps, and add to queue to run
         entry.effect = effect;
         entry.deps = deps;
-        currentEffectQueue.push(entry);
+        effectQueue.push(entry);
     }
 }
 

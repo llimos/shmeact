@@ -479,6 +479,7 @@ class ShmeactComponentElement extends ShmeactElement<ShmeactComponentElementSpec
     rendered: ShmeactElement | null = null;
     state: unknown[] = [];
     effects: Effect[] = [];
+    layoutEffects: Effect[] = [];
     refs: Ref[] = [];
     memos: Memo[] = [];
     
@@ -486,9 +487,11 @@ class ShmeactComponentElement extends ShmeactElement<ShmeactComponentElementSpec
     static currentlyRendering: ShmeactComponentElement | null = null;
     currentStateIndex: number = 0;
     currentEffectIndex: number = 0;
+    currentLayoutEffectIndex: number = 0;
     currentRefIndex: number = 0;
     currentMemoIndex: number = 0;
     currentEffectQueue: Effect[] = [];
+    currentLayoutEffectQueue: Effect[] = [];
     
     constructor(spec: ShmeactComponentElementSpec, parent: ParentElement) {
         super(parent);
@@ -515,8 +518,9 @@ class ShmeactComponentElement extends ShmeactElement<ShmeactComponentElementSpec
     render(domLocation?: DomLocation): void {
         // Set up global variables
         ShmeactComponentElement.currentlyRendering = this;
-        this.currentStateIndex = this.currentEffectIndex = this.currentRefIndex = this.currentMemoIndex = 0;
+        this.currentStateIndex = this.currentEffectIndex = this.currentLayoutEffectIndex = this.currentRefIndex = this.currentMemoIndex = 0;
         this.currentEffectQueue = [];
+        this.currentLayoutEffectQueue = [];
 
         // Do the render
         const {component, props, children} = this;
@@ -544,6 +548,10 @@ class ShmeactComponentElement extends ShmeactElement<ShmeactComponentElementSpec
         }
 
         // Done rendering and reconciling to DOM. Run effects on the next tick
+        if (this.currentLayoutEffectQueue.length > 0) {
+            const myLayoutEffectQueue = this.currentLayoutEffectQueue;
+            window.requestAnimationFrame(() => myLayoutEffectQueue.forEach(this.runEffect));
+        }
         if (this.currentEffectQueue.length > 0) {
             const myEffectQueue = this.currentEffectQueue;
             window.setTimeout(() => myEffectQueue.forEach(this.runEffect));
@@ -595,15 +603,30 @@ class ShmeactComponentElement extends ShmeactElement<ShmeactComponentElementSpec
         
         if (!entry) {
             entry = { effect, deps };
-            this.currentEffectQueue.push(entry);
             this.effects[index] = entry;
+            this.currentEffectQueue.push(entry);
         } else if (this.depsChanged(entry.deps, deps)) {
             entry.effect = effect;
             entry.deps = deps;
             this.currentEffectQueue.push(entry);
         }
     }
-    
+
+    useLayoutEffect(effect: EffectFunction, deps?: unknown[]): void {
+        const index = this.currentLayoutEffectIndex++;
+        let entry = this.layoutEffects[index];
+
+        if (!entry) {
+            entry = { effect, deps };
+            this.layoutEffects[index] = entry;
+            this.currentLayoutEffectQueue.push(entry);
+        } else if (this.depsChanged(entry.deps, deps)) {
+            entry.effect = effect;
+            entry.deps = deps;
+            this.currentLayoutEffectQueue.push(entry);
+        }
+    }
+
     useRef<T = any>(): Ref<T|undefined>;
     useRef<T = any>(initial: T): Ref<T>;
     useRef<T = any>(initial?: T) {
