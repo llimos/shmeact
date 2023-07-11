@@ -12,6 +12,7 @@ const MyComponent = ({onUnmount}: {onUnmount: () => void}) => {
             <h1>hello <b>world</b></h1>
             <Clock />
             <UnmountButton onUnmount={onUnmount} />
+            <CSSChooser/>
             <List/>
             <Counter/>
             <RefTester/>
@@ -41,6 +42,35 @@ const UnmountButton = ({onUnmount}: {onUnmount: () => void}) =>
         <button type="button" onClick={onUnmount}>button</button>.
         Click it to unmount {'everything'}
     </p>;
+
+const CSSChooser = () => {
+    const [css, setCss] = useState<string>("https://unpkg.com/boltcss/bolt.min.css");
+    useEffect(() => {
+        (document.getElementById('main-css') as HTMLLinkElement)!.href = css
+    }, [css]);
+    const systemDarkMode = window.matchMedia('(prefers-color-scheme: dark)');
+    const [darkMode, setDarkMode] = useState<boolean>(systemDarkMode.matches);
+    useEffect(() => {
+        const listener = (e: MediaQueryListEvent) => setDarkMode(e.matches);
+        systemDarkMode.addEventListener('change', listener);
+        return () => systemDarkMode.removeEventListener('change', listener);
+    }, [])
+
+    return <div>
+        <h3>Choose CSS</h3>
+        <div style={{display: 'flex', gap: '5px'}}>
+        <select onChange={(e: InputEvent) => setCss((e.target as HTMLSelectElement)!.value)} value={css}>
+            <option value="https://cdn.jsdelivr.net/npm/water.css@2/out/water.css">Water</option>
+            <option value="https://unpkg.com/boltcss/bolt.min.css">Bolt</option>
+            <option value="https://classless.de/classless.css">Classless</option>
+            <option value="https://cdn.jsdelivr.net/npm/@exampledev/new.css@1.1.2/new.min.css">New</option>
+            <option value="https://unpkg.com/concrete.css@2.0.3/concrete.css">Concrete</option>
+            <option value="https://unpkg.com/sakura.css/css/sakura.css">Sakura</option>
+        </select>
+        <p>Dark mode is <b>{darkMode ? 'ON' : 'OFF'}</b></p>
+        </div>
+    </div>
+}
 
 const List = () => {
     const [reverseElementOrder, setReverseElementOrder] = useState(false);
