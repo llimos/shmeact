@@ -1,12 +1,17 @@
-//import {createElement, Fragment, domRender, domUnmount, useEffect, useState, useRef, createContext, useContext} from "./shmeact.js";
-import {createElement, Fragment, domRender, domUnmount, useEffect, useState, useRef, createContext, useContext} from "./shmOOact.js";
+// If Typescript causes you problems, and you can't or don't want to fix them, or you're not a TS person,
+// remove the space after the @ from the comment below to disable it
+//@ ts-nocheck
+
+//import {createElement, Fragment, createRoot, domRender, domUnmount, useEffect, useState, useRef, createContext, useContext, forwardRef, useImperativeHandle} from "./shmeact.js";
+import {createElement, Fragment, createRoot, domRender, domUnmount, useEffect, useState, useRef, createContext, useContext, forwardRef, useImperativeHandle} from "./shmOOact.js";
 
 const MyContext = createContext('No context provided!');
 
-const MyComponent = () => {
+const MyComponent = ({onUnmount}: {onUnmount: () => void}) => {
     return <div className="hi">
             <h1>hello <b>world</b></h1>
-            <p>This is a <button type="button" onClick={() => domUnmount(document.getElementById('app-root')!)}>button</button>. Click it to unmount {'everything'}</p>
+            <Clock />
+            <UnmountButton onUnmount={onUnmount} />
             <List/>
             <Counter/>
             <RefTester/>
@@ -15,8 +20,27 @@ const MyComponent = () => {
                 <ContextTester label="should be A" />
             </MyContext.Provider>
             <ContextTester label="should be default" />
+            <ImperativeHandleTester />
         </div>;
 }
+
+const Clock = () => {
+    const [now, setNow] = useState(new Date);
+    useEffect(() => {
+        const handle = window.setInterval(() => setNow(new Date), 1000);
+
+        return () => window.clearInterval(handle);
+    }, []);
+    return <div>
+        The current time is {now.toLocaleString()}
+    </div>;
+}
+
+const UnmountButton = ({onUnmount}: {onUnmount: () => void}) =>
+    <p>This is a{' '}
+        <button type="button" onClick={onUnmount}>button</button>.
+        Click it to unmount {'everything'}
+    </p>;
 
 const List = () => {
     const [reverseElementOrder, setReverseElementOrder] = useState(false);
@@ -30,6 +54,7 @@ const List = () => {
         listElements.reverse();
     
     return <>
+        <h3>List</h3>
         <ul>
             {listElements}
         </ul>
@@ -81,5 +106,37 @@ const ContextTester = ({label}: {label: string}) => {
     </div>;
 }
 
+const ImperativeHandleTester = () => {
+    const ref = useRef();
+    const focusInnerInput = () => ref.current?.focusInput();
+    return <div>
+        <h3>Test Imperative Handle</h3>
+        <p>
+            <button type="button" onClick={focusInnerInput}>Click to focus the input box</button>
+        </p>
+        <p>
+            <ImperativeHandleInner ref={ref} />
+        </p>
+    </div>;
+}
+
+const ImperativeHandleInner = forwardRef((props, ref) => {
+    const inputRef = useRef<HTMLInputElement>();
+    useImperativeHandle(ref, {
+        focusInput() { inputRef.current?.focus(); }
+    });
+    return <input placeholder="Click the button to focus me" ref={inputRef} />
+});
+
+
 // Render it
-domRender(document.getElementById('app-root')!, <MyComponent/>);
+const rootElement = document.getElementById('app-root')!;
+// There's the old and new API's available. Only use one!
+// We pass in the unmount function as a prop, since there's a button to unmount it, and it needs to know
+
+// Old API
+//domRender(rootElement, <MyComponent onUnmount={() => domUnmount(rootElement)}/>);
+
+// New API
+const root = createRoot(document.getElementById('app-root')!);
+root.render(<MyComponent onUnmount={() => root.unmount()}/>);

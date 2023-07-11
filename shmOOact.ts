@@ -62,16 +62,16 @@ interface DomLocation {
 }
 
 // Effects
-type EffectFunction = () => void | (() => (() => void));
+type EffectFunction = (() => void) | (() => (() => void));
 interface Effect {
     effect: EffectFunction;
     deps: unknown[] | undefined;
     teardown?: (() => void) | undefined;
 }
-interface Ref<T = unknown> {
+interface Ref<T = any> {
     current: T;
 }
-interface Memo<T = unknown> {
+interface Memo<T = any> {
     value: T;
     deps: unknown[];
 }
@@ -599,9 +599,9 @@ class ShmeactComponentElement extends ShmeactElement<ShmeactComponentElementSpec
         }
     }
     
-    useRef<T>(): Ref<T|undefined>;
-    useRef<T>(initial: T): Ref<T>;
-    useRef<T>(initial?: T) {
+    useRef<T = any>(): Ref<T|undefined>;
+    useRef<T = any>(initial: T): Ref<T>;
+    useRef<T = any>(initial?: T) {
         const index = this.currentRefIndex++;
 
         if (this.refs.length <= index)
@@ -692,12 +692,23 @@ export function useEffect(effect: EffectFunction, deps?: any[]): void {
         throw new Error('useEffect called outside render');
     return ShmeactComponentElement.currentlyRendering?.useEffect(effect, deps);
 }
-export function useRef<T>(): Ref<T|undefined>;
-export function useRef<T>(initial: T): Ref<T>;
-export function useRef<T>(initial?: T) {
+export function useRef<T = any>(): Ref<T|undefined>;
+export function useRef<T = any>(initial: T): Ref<T>;
+export function useRef<T = any>(initial?: T) {
     if (!ShmeactComponentElement.currentlyRendering)
         throw new Error('useRef called outside render');
     return ShmeactComponentElement.currentlyRendering.useRef(initial);
+}
+/** Used when you want to have a ref to a Shmeact component element */
+export function forwardRef<T extends ShmeactProps>(component: (restPops: T, ref: Ref) => ShmeactElementSpec): ShmeactComponent<T & {ref?: Ref}> {
+    return (props: T & {ref?: Ref}) => {
+        let {ref, ...rest} = props;
+        return component(rest as T, ref ?? {current: undefined});
+    }
+}
+/** When there is a ref to a Shmeact component element, this sets what the ref should do */
+export function useImperativeHandle(ref: Ref, handle: any): void {
+    ref.current = handle;
 }
 export function useMemo<T = any>(fn: () => T, deps: any[]): T {
     if (!ShmeactComponentElement.currentlyRendering)

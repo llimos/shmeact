@@ -58,7 +58,7 @@ type ShmeactElementSpec = ShmeactComponentElementSpec | ShmeactDomElementSpec | 
 // and the number of real DOM nodes they contain (to help with the reconciliation later)
 
 // Only certain types can be parents
-type ParentElement = ShmeactComponentElement | ShmeactDomElement | ShmeactArrayElement; 
+type ParentElement = ShmeactComponentElement | ShmeactDomElement | ShmeactArrayElement | ShmeactRootElement; 
 interface ShmeactElementBase {
     parent: ParentElement | null; // Only the root element can have a null parent
     domNodesCount: number;
@@ -90,6 +90,15 @@ interface ShmeactTextElement extends ShmeactElementBase {
 
 /** This is what makes up the virtual DOM tree */
 type ShmeactElement = ShmeactComponentElement | ShmeactDomElement | ShmeactTextElement | ShmeactArrayElement;
+
+// The root element is special - it's a DOM element that has a single child and no parent
+interface ShmeactRootElement {
+    type: 'root';
+    dom: Element;
+    rendered: ShmeactElement | null;
+    render(spec: ShmeactElementSpec): void;
+    unmount(): void;
+}
 
 // Effects
 type EffectFunction = (() => void) | (() => (() => void));
@@ -131,59 +140,74 @@ function isDomElement(element: ShmeactElementSpec): element is ShmeactDomElement
 function isDomElement(element: ShmeactElement | ShmeactElementSpec){
     return element && typeof element === 'object' && !Array.isArray(element) && 'type' in element && element?.type === 'dom';
 }
-function isStringElement(element: ShmeactElement): element is ShmeactTextElement {
+function isStringElement(element: ShmeactElement | ShmeactRootElement): element is ShmeactTextElement {
     return typeof element === 'object' && !Array.isArray(element) && element?.type === 'text';
 }
-function isArrayElement(element: ShmeactElement): element is ShmeactArrayElement {
+function isArrayElement(element: ShmeactElement | ShmeactRootElement): element is ShmeactArrayElement {
     return typeof element === 'object' && !Array.isArray(element) && element?.type === 'array';
+}
+function isRootElement(element: ShmeactElement | ShmeactRootElement): element is ShmeactRootElement {
+    return typeof element === 'object' && !Array.isArray(element) && element?.type === 'root';
 }
 
 
 // Render process
-
-// Map of mounted roots. Used only for unmounting
-const shmeactRoots = new Map<Element, ShmeactDomElement>();
-
 // It all starts here - this is where we mount the initial component
-/** How we mount the initial component - equivalent of ReactDOM.render */
-export function domRender(root: Element, element: ShmeactElementSpec): void {
-    // Clear out anything already there
-    root.replaceChildren();
 
-    // Create a VDOM node representing the root
-    const rootNode: ShmeactDomElement = {
-        type: 'dom',
-        component: root.localName,
-        props: {},
-        childNodes: [],
-        dom: root,
-        domNodesCount: 1,
-        parent: null
+// New API
+export function createRoot(rootElement: Element): ShmeactRootElement {
+    rootElement.replaceChildren();
+
+    const rootNode: ShmeactRootElement =  {
+        type: 'root',
+        dom: rootElement,
+        rendered: null,
+        render(spec: ShmeactElementSpec) {
+            if (canUpdate(this.rendered, spec))
+                update(this.rendered, spec)
+            else if (spec)
+                this.rendered = create(spec, this, this.dom, 0);
+        },
+        unmount() {
+            if (this.rendered)
+                remove(this.rendered);
+            this.rendered = null;
+        }
     };
-    
-    // Add it to our roots map
-    shmeactRoots.set(root, rootNode);
 
     // Shmeact Devtools! Uncomment to see the VDOM in the console
     console.log('Welcome to Shmeact Devtools!')
-    console.log('Rendering to', root);
+    console.log('Rendering to', rootElement);
     console.dir(rootNode); // Should dynamically update in console so you see the whole VDOM
+
+    return rootNode;
+}
+
+// Old API
+
+// Map of mounted roots. Used only for unmounting
+const shmeactRoots = new Map<Element, ShmeactRootElement>();
+
+/** How we mount the initial component - equivalent of ReactDOM.render */
+export function domRender(root: Element, element: ShmeactElementSpec): void {
+    const rootNode = createRoot(root);
+
+    // Add it to our roots map
+    shmeactRoots.set(root, rootNode);
 
     // Render
     if (element !== null)
-        rootNode.childNodes.push(create(element, rootNode, root, 0));
+        rootNode.render(element);
 }
 
 /** Remove it all - equivalent of ReactDOM.unmountComponentAtNode */
 export function domUnmount(root: Element): void {
-    const rootNode = shmeactRoots.get(root);
-    if (rootNode)
-        for (const child of rootNode.childNodes)
-            remove(child);
+    shmeactRoots.get(root)?.unmount();
     shmeactRoots.delete(root);
 }
 
 
+// Render process
 
 // Need to know which one is currently rendering, to handle hooks
 let currentlyRenderingElement: ShmeactComponentElement | null = null,
@@ -216,18 +240,12 @@ function renderComponentElement(element: ShmeactComponentElement, domParent?: El
     if (!domParent || !offset)
         [domParent, offset] = getDomParentAndOffset(element);
     
-    const existing = element.rendered
+    const existing = element.rendered ?? null;
     
     // If the types are the same, update the existing element
-    if (existing && renderResult !== null
-        && (
-            (isDomElement(existing) && isDomElement(renderResult) && existing.component === renderResult.component)
-            || (isComponentElement(existing) && isComponentElement(renderResult) && existing.component === renderResult.component)
-            || (isArrayElement(existing) && Array.isArray(renderResult))
-            || (isStringElement(existing)))) {
-        
+    if (canUpdate(existing, renderResult))
         update(existing, renderResult);
-    }
+
     // Otherwise, it's not the same type of component, we need to remove and re-add (or just remove or just add)
     else {
         // Remove existing if any
@@ -360,6 +378,19 @@ function create(elementSpec: NonNullable<ShmeactElementSpec>, parent: ParentElem
 
 
 /**
+* Returns whether a Shmeact element is compatible with an updated spec
+*/
+function canUpdate(existing: ShmeactElement | null, updated: ShmeactElementSpec | null): existing is ShmeactElement {
+    return Boolean(existing && updated !== null
+        && (
+            (isDomElement(existing) && isDomElement(updated) && existing.component === updated.component)
+            || (isComponentElement(existing) && isComponentElement(updated) && existing.component === updated.component)
+            || (isArrayElement(existing) && Array.isArray(updated))
+            || (isStringElement(existing))))
+}
+
+
+/**
 * Used when the component already exists but props or children have changed
 * We always keep the original object and update it, to avoid losing state
 */
@@ -465,8 +496,8 @@ function updateDomElementAttributes(element: Element, oldProps: ShmeactProps | n
 
     for (const [k, v] of Object.entries(newProps)) {
         // Ref
-        if (k === 'ref' && !oldProps.ref && 'current' in v)
-            v.current = element;
+        if (k === 'ref' && !oldProps.ref && 'current' in (v as Ref))
+            (v as Ref).current = element;
 
         if (internalProps.includes(k)) // includes ref
             continue;
@@ -479,16 +510,16 @@ function updateDomElementAttributes(element: Element, oldProps: ShmeactProps | n
                 if (oldProps[k])
                     element.removeEventListener(eventName, oldProps[k]);
                 // Add the new one
-                element.addEventListener(eventName, v);
+                element.addEventListener(eventName, v as EventListenerOrEventListenerObject);
 
             } else if (k === 'style') { // Style is a special case
                 const oldStyle: any = oldProps.style ?? {};
-                for (const [sk, sv] of Object.entries(v))
+                for (const [sk, sv] of Object.entries(v as CSSStyleDeclaration))
                     if (sv !== oldStyle[sk])
                         //@ts-ignore Add or update style
                         element.style[sk] = sv;
                 for (const sk of Object.keys(oldStyle))
-                    if (!(sk in v))
+                    if (!(sk in (v as CSSStyleDeclaration)))
                         //@ts-ignore Been removed
                         element.style[sk] = null;
 
@@ -501,10 +532,10 @@ function updateDomElementAttributes(element: Element, oldProps: ShmeactProps | n
     // Check for removed
     for (const [k, v] of Object.entries(oldProps))
         if (!internalProps.includes(k) && v !== null && v !== undefined && !(k in newProps))
-            if (k === 'ref' && 'current' in v)
-                v.current = undefined;
+            if (k === 'ref' && 'current' in (v as Ref))
+                (v as Ref).current = undefined;
             else if (k.startsWith('on'))
-                element.removeEventListener(k.slice(2).toLowerCase(), v);
+                element.removeEventListener(k.slice(2).toLowerCase(), v as EventListenerOrEventListenerObject);
             else if (k === 'style')
                 for (const sk of Object.keys(v))
                     //@ts-ignore
@@ -550,6 +581,7 @@ function move(element: ShmeactElement, domParent: Element, offset: number): numb
             moved += move(child, domParent, offset + moved);
         return moved;
     }
+
     return 0;
 }
 
@@ -585,11 +617,13 @@ function remove(element: ShmeactElement) {
         if (element.effects)
             for (const effect of element.effects)
                 effect.teardown?.();
+
+        return;
     }
     
     if (isArrayElement(element))
         for (const child of element.childNodes)
-            remove(element);
+            remove(child);
 }
 
 
@@ -611,10 +645,10 @@ function getDomParentAndOffset(element: ShmeactElement): [Element, number] {
     // Keep moving up the tree until we hit a ShmeactDomElement. That will be the parent.
     // As we go, add up the domElement counts of the older siblings to this element. That will be the offset.
     let currentElement = element;
-    let currentParent: ShmeactComponentElement | ShmeactDomElement | ShmeactArrayElement = element.parent!;
+    let currentParent: ParentElement = element.parent!;
     let offset = 0;
     do {
-        // Component elements only have one child so there is no offset to add
+        // Component and root elements only have one child so there is no offset to add
         if (isDomElement(currentParent) || isArrayElement(currentParent)) {
             for (const sibling of currentParent.childNodes) {
                 if (sibling === currentElement)
@@ -622,15 +656,15 @@ function getDomParentAndOffset(element: ShmeactElement): [Element, number] {
                 offset += sibling?.domNodesCount ?? 0;
             }
         }
-        if (!isDomElement(currentParent))
+        if (!isDomElement(currentParent) && !isRootElement(currentParent))
             currentParent = currentParent.parent!;
-    } while (!isDomElement(currentParent));
+    } while (!isDomElement(currentParent) && !isRootElement(currentParent));
 
     return [currentParent.dom!, offset];
 }
 
 function updateParentsDomNodeCount(parent: ParentElement, delta: number): void {
-    while (!isDomElement(parent)) {
+    while (!isDomElement(parent) && !isRootElement(parent)) {
         parent.domNodesCount += delta;
         parent = parent.parent!;
     }
@@ -648,15 +682,18 @@ export function useState<T>(initial?: T) {
     if (!currentlyRenderingElement)
         throw new Error('Called useState outside of render');
     
-    if (currentlyRenderingElement.state.length <= currentStateIndex)
-        // New state entry
-        currentlyRenderingElement.state[currentStateIndex] = initial;
-    
-    // Set consts to capture the values
+    // Retrieve the currently rendering element
     const element = currentlyRenderingElement,
-          index = currentStateIndex,
+    // Index in the state array (and increase the index for next time)
+          index = currentStateIndex++;
+
+    // Add to the state array if this is the first time
+    if (element.state.length <= index)
+        // New state entry
+        element.state[index] = initial;
+
     // Keep current value handy for the set state function
-          currentValue = element.state![index];
+    const currentValue = element.state![index];
     
     const setStateFunction = (newValue: any) => {
         // A set state function can accept either a new value,
@@ -666,11 +703,9 @@ export function useState<T>(initial?: T) {
         
         element.state[index] = newValue;
         
-        // Rerender
+        // Rerender the component with the new state
         renderComponentElement(element);
     }
-    
-    currentStateIndex++;
     
     return [element.state[index], setStateFunction];
 }
@@ -679,50 +714,68 @@ export function useEffect(effect: EffectFunction, deps?: any[]): void {
     if (!currentlyRenderingElement)
         throw new Error('Called useEffect outside of render');
     
-    let entry = currentlyRenderingElement.effects[currentEffectIndex] ?? {};
+    const element = currentlyRenderingElement,
+          index = currentEffectIndex++;
 
-    if (currentlyRenderingElement.effects.length <= currentEffectIndex || depsChanged(entry.deps, deps)) {
+    let entry = element.effects[index];
+    // If this is the first time, add it to the effects array
+    // and the queue for effects to run
+    if (!entry) {
+        entry = element.effects[index] = {effect, deps};
+        currentEffectQueue.push(entry);
+    } else if (depsChanged(entry.deps, deps)) {
+        // Dependencies changed - replace effect and deps, and add to queue to run
         entry.effect = effect;
         entry.deps = deps;
         currentEffectQueue.push(entry);
-        currentlyRenderingElement.effects[currentEffectIndex] = entry;
     }
-    
-    currentEffectIndex++;
 }
 
 
-export function useRef<T>(): Ref<T|undefined>;
-export function useRef<T>(initial: T): Ref<T>;
-export function useRef<T>(initial?: T): Ref<T> {
+export function useRef<T = any>(): Ref<T|undefined>;
+export function useRef<T = any>(initial: T): Ref<T>;
+export function useRef<T = any>(initial?: T): Ref<T> {
     if (!currentlyRenderingElement)
         throw new Error('Called useRef outside of render');
     
-    const index = currentRefIndex;
+    const index = currentRefIndex++;
     
     if (currentlyRenderingElement.refs.length <= index)
-        currentlyRenderingElement.refs.push({current: initial})
-    
-    currentRefIndex++;
+        currentlyRenderingElement.refs[index] = {current: initial};
     
     return currentlyRenderingElement.refs[index];
+}
+
+/**
+* Used when you want to have a ref to a Shmeact component element
+*/
+export function forwardRef<T extends ShmeactProps>(component: (restPops: T, ref: Ref) => ShmeactElementSpec): ShmeactComponent<T & {ref?: Ref}> {
+    return (props: T & {ref?: Ref}) => {
+        let {ref, ...rest} = props;
+        return component(rest as T, ref ?? {current: undefined});
+    }
+}
+
+/**
+* When there is a ref to a Shmeact component element, this sets what the ref should do
+*/
+export function useImperativeHandle(ref: Ref, handle: any): void {
+    ref.current = handle;
 }
 
 export function useMemo<T = any>(fn: () => T, deps: any[]): T {
     if (!currentlyRenderingElement)
         throw new Error('Called useMemo outside of render');
     
-    if (currentlyRenderingElement.memos.length <= currentMemoIndex
-        || depsChanged(currentlyRenderingElement.memos[currentMemoIndex].deps, deps)) {
-        currentlyRenderingElement.memos[currentMemoIndex] = {
-            value: fn(),
-            deps
-        };
-    }
+    const element = currentlyRenderingElement,
+          index = currentMemoIndex++;
+
+    // Update if new or if deps changed
+    if (element.memos.length <= index || depsChanged(element.memos[index].deps, deps))
+        element.memos[index] = { value: fn(), deps };
     
-    currentMemoIndex++;
-    
-    return currentlyRenderingElement.memos[currentMemoIndex].value;
+    // Return the value
+    return element.memos[index].value;
 }
 
 // This is straight from the React docs!
@@ -736,7 +789,7 @@ interface Context<T> {
 }
 export function createContext<T>(defaultValue: T): Context<T> {
     return {
-        Provider: (props: {context: T, children?: ShmeactElementSpec[]|null}) => props?.children ?? null,
+        Provider: ({children}) => children ?? null,
         defaultValue
     };
 }
@@ -745,7 +798,7 @@ export function useContext<T>(context: Context<T>): T {
         throw new Error('Called useContext outside of render');
     // Walk up the component tree, looking for a provider
     let currentParent = currentlyRenderingElement.parent;
-    while (currentParent) {
+    while (currentParent && !isRootElement(currentParent)) {
         if (isComponentElement(currentParent) && currentParent.component === context.Provider)
             return currentParent.props!.context as T;
         currentParent = currentParent.parent;
