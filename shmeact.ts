@@ -60,7 +60,7 @@ type ShmeactElementSpec = ShmeactComponentElementSpec | ShmeactDomElementSpec | 
 // Only certain types can be parents
 type ParentElement = ShmeactComponentElement | ShmeactDomElement | ShmeactArrayElement | ShmeactRootElement; 
 interface ShmeactElementBase {
-    parent: ParentElement | null; // Only the root element can have a null parent
+    parent: ParentElement;
     domNodesCount: number;
 }
 // The object representing the component in the virtual DOM also contains its state and effects
