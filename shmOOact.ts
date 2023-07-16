@@ -581,13 +581,14 @@ class ShmeactComponentElement extends ShmeactElement<ShmeactComponentElementSpec
     // The global useXXX functions look up which is the currently rendering component
     // and forward the call to here
 
-    useState<T>(initital: T): [T, SetStateFunction<T>];
+    useState<T>(initial: () => T): [T, SetStateFunction<T>];
+    useState<T>(initial: T): [T, SetStateFunction<T>];
     useState<T>(): [T|undefined, SetStateFunction<T>];
-    useState<T>(initial?: T) {
+    useState<T>(initial?: T|(() => T)): [T|undefined, SetStateFunction<T>] {
         const index = this.currentStateIndex++;
         
         if (this.state.length <= index)
-            this.state[index] = initial;
+            this.state[index] = typeof initial === 'function' ? (initial as ()=>T)() : initial;
 
         // Keep current value handy for the set state function
         const currentValue = this.state[index] as T;
@@ -601,7 +602,7 @@ class ShmeactComponentElement extends ShmeactElement<ShmeactComponentElementSpec
             this.render();
         }
     
-        return [this.state[index], setStateFunction];
+        return [this.state[index] as T, setStateFunction];
     }
     
     useEffect(effect: EffectFunction, deps?: unknown[]): void {
@@ -715,12 +716,21 @@ function appendChild(node: Node, domLocation: DomLocation): void {
 
 type SetStateFunction<T> = ((newval: T | ((oldval: T) => T)) => void)
 
-export function useState<T>(initital: T): [T, SetStateFunction<T>];
-export function useState<T>(): [T|undefined, SetStateFunction<T>];
-export function useState<T>(initial?: T) {
+export function useState<T>(initial: () => T): [T, SetStateFunction<T>];
+export function useState<T>(initial: T extends () => any ? never : T): [T, SetStateFunction<T>];
+export function useState<T>(): [T | undefined, SetStateFunction<T>];
+export function useState<T>(initial?: T | (() => T)) {
     if (!ShmeactComponentElement.currentlyRendering)
         throw new Error('useState called outside render');
     return ShmeactComponentElement.currentlyRendering?.useState(initial);
+}
+type Reducer<T, A = any> = (state: T, action: A) => T;
+export function useReducer<T, A = any>(reducer: Reducer<T>, initialArg: T): [T, (action: A) => void];
+export function useReducer<T, A = any>(reducer: Reducer<T>, initialArg: unknown, init: (init: typeof initialArg) => T): [T, (action: A) => void];
+export function useReducer<T, A = any>(reducer: Reducer<T>, initialArg: any, init?: (init: typeof initialArg) => T): [T, (action: A) => void] {
+    // Use useState internally
+    const [state, setState] = useState<T>(() => init ? init(initialArg) : initialArg as T);
+    return [state, (action: A) => setState(reducer(state, action))];
 }
 export function useEffect(effect: EffectFunction, deps?: any[]): void {
     if (!ShmeactComponentElement.currentlyRendering)

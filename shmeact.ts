@@ -700,10 +700,10 @@ function renderComponentElement(element: ShmeactComponentElement, domParent?: El
 // Hooks
 
 type SetStateFunction<T> = ((newval: T | ((oldval: T) => T)) => void)
-
-export function useState<T>(initital: T): [T, SetStateFunction<T>];
+export function useState<T>(initial: () => T): [T, SetStateFunction<T>];
+export function useState<T>(initial: T extends () => any ? never : T): [T, SetStateFunction<T>];
 export function useState<T>(): [T|undefined, SetStateFunction<T>];
-export function useState<T>(initial?: T) {
+export function useState<T>(initial?: T | (() => T)) {
     if (!currentlyRenderingElement)
         throw new Error('Called useState outside of render');
     
@@ -715,7 +715,7 @@ export function useState<T>(initial?: T) {
     // Add to the state array if this is the first time
     if (element.state.length <= index)
         // New state entry
-        element.state[index] = initial;
+        element.state[index] = typeof initial === 'function' ? (initial as ()=>T)() : initial;
 
     // Keep current value handy for the set state function
     const currentValue = element.state![index];
@@ -733,6 +733,15 @@ export function useState<T>(initial?: T) {
     }
     
     return [element.state[index], setStateFunction];
+}
+
+type Reducer<T, A = any> = (state: T, action: A) => T;
+export function useReducer<T, A = any>(reducer: Reducer<T>, initialArg: T): [T, (action: A) => void];
+export function useReducer<T, A = any>(reducer: Reducer<T>, initialArg: unknown, init: (init: typeof initialArg) => T): [T, (action: A) => void];
+export function useReducer<T, A = any>(reducer: Reducer<T>, initialArg: unknown, init?: (init: typeof initialArg) => T): [T, (action: A) => void] {
+    // Use useState internally
+    const [state, setState] = useState<T>(() => init ? init(initialArg) : initialArg as T);
+    return [state, (action: A) => setState(reducer(state, action))];
 }
 
 export function useEffect(effect: EffectFunction, deps?: any[]): void {

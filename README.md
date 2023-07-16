@@ -36,7 +36,7 @@ Note that DOM element typings come from TypeScript, and may differ slightly in R
 * JSX, with Typescript configured appropriately
 * React basics - function components, rendering, etc.
 * `key` prop for matching elements during reconciliation
-* `useState` hook
+* `useState` and `useReducer` hooks
 * `useEffect` and `useLayoutEffect` hooks
 * `useRef` hook, the `ref` prop for DOM and component elements, and `forwardRef` and `useInvocationHandler` for component element refs
 * `useMemo` hook
