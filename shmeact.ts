@@ -218,79 +218,6 @@ export function domUnmount(root: Element): void {
 }
 
 
-// Render process
-
-// Need to know which one is currently rendering, to handle hooks
-let currentlyRenderingElement: ShmeactComponentElement | null = null,
-    currentStateIndex: number, currentEffectIndex: number, currentLayoutEffectIndex: number, currentRefIndex: number, currentMemoIndex: number,
-    currentEffectQueue: Effect[], currentLayoutEffectQueue: Effect[];
-
-/**
-* Render a Shmeact component
-* This function expects that the component is already attached to the Vdom
-*/
-function renderComponentElement(element: ShmeactComponentElement, domParent?: Element, offset?: number): ShmeactElementSpec {
-    // Set up global variables
-    currentlyRenderingElement = element;
-    currentStateIndex = currentEffectIndex = currentLayoutEffectIndex = currentRefIndex = currentMemoIndex = 0;
-    // Since a parent component may be in the middle of rendering and have its effect queue
-    // we swap them and swap them back at the end
-    const oldEffectQueue = currentEffectQueue;
-    currentEffectQueue = [];
-    const oldLayoutEffectQueue = currentLayoutEffectQueue;
-    currentLayoutEffectQueue = [];
-    
-    // Do the render
-    const {component, props, children} = element;
-    const renderResult = component({...props, children}) ?? null;
-    // React used to enforce returning null, not undefined
-    // The rest of Shmeact only checks for null, so coerce undefined to null
-    // just in case someone got it wrong
-    
-    currentlyRenderingElement = null;
-    
-    // Reconcile the result to the DOM
-    if (!domParent || !offset)
-        [domParent, offset] = getDomParentAndOffset(element);
-    
-    const existing = element.rendered ?? null;
-    
-    // If the types are the same, update the existing element
-    if (canUpdate(existing, renderResult))
-        update(existing, renderResult);
-
-    // Otherwise, it's not the same type of component, we need to remove and re-add (or just remove or just add)
-    else {
-        // Remove existing if any
-        if (element.rendered)
-            remove(element.rendered);
-        // Add new
-        element.rendered = renderResult !== null
-            ? create(renderResult, element, domParent, offset)
-            : null;
-    }
-    
-    // Done rendering and reconciling to DOM. Run effects
-
-    // Layout effects run before next paint
-    if (currentLayoutEffectQueue.length > 0) {
-        const myLayoutEffectQueue = currentLayoutEffectQueue;
-        window.requestAnimationFrame(() => myLayoutEffectQueue.forEach(runEffect));
-    }
-    // Regular effects run on next tick
-    if (currentEffectQueue.length > 0) {
-        const myEffectQueue = currentEffectQueue;
-        window.setTimeout(() => myEffectQueue.forEach(runEffect));
-    }
-    
-    // Restore previous effect queue
-    currentEffectQueue = oldEffectQueue;
-    currentLayoutEffectQueue = oldLayoutEffectQueue;
-    
-    return renderResult;
-}
-
-
 // Reconciliation
 // This is what updates the virtual DOM and changes the real DOM to match
 // We do both together. I think real React does them separately
@@ -614,45 +541,41 @@ function move(element: ShmeactElement, domParent: Element, offset: number): numb
 * Used when the component no longer exists
 * This does NOT remove `element` from its own parent in the virtual DOM
 */
-function remove(element: ShmeactElement) {
-    if (isDomElement(element) || isStringElement(element)) {
-        if (isDomElement(element)) {
-            // Remove all the children
-            if (element.childNodes)
-                for (const child of element.childNodes)
-                    remove(child);
-            // Null the ref is there is one
-            if (element.props?.ref?.current)
-                element.props.ref.current = null;
-        }
-        // Remove the DOM element itself
-        element.dom?.remove();
-        
+function remove(element: ShmeactElement, skipDomRemoval: boolean = false) {
+    // Null the ref if there is one
+    if ((isDomElement(element) || isComponentElement(element)) && element.props?.ref?.current)
+        element.props.ref.current = null;
+
+    // Remove children
+    if ((isDomElement(element) || isArrayElement(element)) && element.childNodes) {
+        // Optimization: If this is a DOM element, we don't need to remove child DOM elements,
+        // since removing the parent will remove them too
+        const childSkipDomRemoval = skipDomRemoval || isDomElement(element);
+        element.childNodes.forEach(child => remove(child, childSkipDomRemoval));
+        element.childNodes = [];
+    }
+
+    // Remove the DOM element itself
+    if (!skipDomRemoval && (isDomElement(element) || isStringElement(element))) {
+        element.dom.remove();
         // Update parents' DOM node count
         updateParentsDomNodeCount(element.parent!, -1)
-
-        return;
     }
     
+    // Remove rendered component
     if (isComponentElement(element)) {
-        // Remove children
-        if (element.rendered)
-            remove(element.rendered);
+        if (element.rendered) {
+            remove(element.rendered, skipDomRemoval);
+            element.rendered = null;
+        }
         // Run any teardown effects
-        if (element.effects)
-            for (const effect of element.effects)
-                try {
-                    effect.teardown?.();
-                } catch (e) {
-                    console.error('Error running effect teardown', e);
-                }
-
-        return;
+        for (const effect of element.effects)
+            try {
+                effect.teardown?.();
+            } catch (e) {
+                console.error('Error running effect teardown', e);
+            }
     }
-    
-    if (isArrayElement(element))
-        for (const child of element.childNodes)
-            remove(child);
 }
 
 
@@ -699,6 +622,79 @@ function updateParentsDomNodeCount(parent: ParentElement, delta: number): void {
     }
 }
 
+
+
+// Component render process
+
+// Need to know which one is currently rendering, to handle hooks
+let currentlyRenderingElement: ShmeactComponentElement | null = null,
+currentStateIndex: number, currentEffectIndex: number, currentLayoutEffectIndex: number, currentRefIndex: number, currentMemoIndex: number,
+currentEffectQueue: Effect[], currentLayoutEffectQueue: Effect[];
+
+/**
+* Render a Shmeact component
+* This function expects that the component is already attached to the Vdom
+*/
+function renderComponentElement(element: ShmeactComponentElement, domParent?: Element, offset?: number): ShmeactElementSpec {
+    // Set up global variables
+    currentlyRenderingElement = element;
+    currentStateIndex = currentEffectIndex = currentLayoutEffectIndex = currentRefIndex = currentMemoIndex = 0;
+    // Since a parent component may be in the middle of rendering and have its effect queue
+    // we swap them and swap them back at the end
+    const oldEffectQueue = currentEffectQueue;
+    currentEffectQueue = [];
+    const oldLayoutEffectQueue = currentLayoutEffectQueue;
+    currentLayoutEffectQueue = [];
+
+    // Do the render
+    const {component, props, children} = element;
+    const renderResult = component({...props, children}) ?? null;
+    // React used to enforce returning null, not undefined
+    // The rest of Shmeact only checks for null, so coerce undefined to null
+    // just in case someone got it wrong
+
+    currentlyRenderingElement = null;
+
+    // Reconcile the result to the DOM
+    if (!domParent || !offset)
+    [domParent, offset] = getDomParentAndOffset(element);
+
+    const existing = element.rendered ?? null;
+
+    // If the types are the same, update the existing element
+    if (canUpdate(existing, renderResult))
+        update(existing, renderResult);
+
+    // Otherwise, it's not the same type of component, we need to remove and re-add (or just remove or just add)
+    else {
+        // Remove existing if any
+        if (element.rendered)
+            remove(element.rendered);
+        // Add new
+        element.rendered = renderResult !== null
+            ? create(renderResult, element, domParent, offset)
+            : null;
+    }
+
+    // Done rendering and reconciling to DOM. Run effects
+
+    // Layout effects run before next paint
+    if (currentLayoutEffectQueue.length > 0) {
+        const myLayoutEffectQueue = currentLayoutEffectQueue;
+        window.requestAnimationFrame(() => myLayoutEffectQueue.forEach(runEffect));
+    }
+    // Regular effects run on next tick
+    if (currentEffectQueue.length > 0) {
+        const myEffectQueue = currentEffectQueue;
+        window.setTimeout(() => myEffectQueue.forEach(runEffect));
+    }
+
+    // Restore previous effect queue
+    currentEffectQueue = oldEffectQueue;
+    currentLayoutEffectQueue = oldLayoutEffectQueue;
+
+    return renderResult;
+}
 
 
 // Hooks

@@ -85,29 +85,29 @@ Represents the DOM element that is the root of the tree
 */
 class ShmeactRootElement {
     readonly dom: Element;
-    #rendered: ShmeactElement | null = null;
+    rendered: ShmeactElement | null = null;
     
     constructor(dom: Element) {
         this.dom = dom;
     }
     
     render(spec: ShmeactElementSpec): void {
-        if (this.#rendered)
-            if (this.#rendered.canUpdateWith(spec)) {
-                this.#rendered.update(spec);
+        if (this.rendered)
+            if (this.rendered.canUpdateWith(spec)) {
+                this.rendered.update(spec);
             } else {
-                this.#rendered.remove();
-                this.#rendered = null;
+                this.rendered.remove();
+                this.rendered = null;
             }
-        if (spec && !this.#rendered) {
-            this.#rendered = ShmeactElement.factory(spec, this);
-            this.#rendered.create({domParent: this.dom, offset: 0});
+        if (spec && !this.rendered) {
+            this.rendered = ShmeactElement.factory(spec, this);
+            this.rendered.create({domParent: this.dom, offset: 0});
         }
     }
     
     unmount(): void {
-        this.#rendered?.remove();
-        this.#rendered = null;
+        this.rendered?.remove();
+        this.rendered = null;
     }
 }
 
@@ -125,7 +125,7 @@ abstract class ShmeactElement<T extends ShmeactElementSpec = ShmeactElementSpec>
     /** Updates the element in the virtual and real DOM */
     abstract update(spec: T, domLocation?: DomLocation): void;
     /** Removes the element from the real DOM */
-    abstract remove(): void;
+    abstract remove(skipDomRemoval?: boolean): void;
     /** Moves the element to a different place in the real DOM */
     abstract move(domLocation: DomLocation): void;
     
@@ -266,10 +266,10 @@ abstract class ShmeactElementWithChildren<T extends ShmeactElementSpec = Shmeact
             }
     }
     
-    removeChildren(): void {
+    removeChildren(skipDomRemoval: boolean): void {
         if (this.childNodes)
             for (const child of this.childNodes)
-                child.remove();
+                child.remove(skipDomRemoval);
         this.childNodes = [];
     }
 }
@@ -374,19 +374,20 @@ class ShmeactDomElement extends ShmeactElementWithChildren<ShmeactDomElementSpec
                     this.rendered[k] = undefined;
     }
 
-    remove() {
-        this.removeChildren();
+    remove(skipDomRemoval: boolean = false) {
+        this.removeChildren(true);
         
         // Null the ref is there is one
         if (this.props?.ref?.current)
             this.props.ref.current = null;
     
         // Remove the DOM element itself
-        this.rendered?.remove();
-        this.rendered = null;
-
-        // Update DOM node count
-        this.updateDomNodeCount(-1)
+        if (!skipDomRemoval) {
+            this.rendered?.remove();
+            this.rendered = null;
+            // Update DOM node count
+            this.updateDomNodeCount(-1)
+        }
     }
     
     move(domLocation: DomLocation): void {
@@ -408,8 +409,8 @@ class ShmeactArrayElement extends ShmeactElementWithChildren<ShmeactArrayElement
         this.updateChildren(spec, this.getDomLocation());
     }
     
-    remove() {
-        this.removeChildren();
+    remove(skipDomRemoval: boolean = false) {
+        this.removeChildren(skipDomRemoval);
     }
     
     move(domLocation: DomLocation) {
@@ -444,13 +445,15 @@ class ShmeactTextElement extends ShmeactElement {
         this.rendered!.data = String(spec);
     }
     
-    remove(): void {
-        // Remove the DOM element itself
-        this.rendered?.remove();
-        this.rendered = null;
+    remove(skipDomRemoval: boolean = false): void {
+        if (!skipDomRemoval) {
+            // Remove the DOM element itself
+            this.rendered?.remove();
+            this.rendered = null;
 
-        // Update DOM node count
-        this.updateDomNodeCount(-1);
+            // Update DOM node count
+            this.updateDomNodeCount(-1);
+        }
     }
     
     move(domLocation: DomLocation): void {
@@ -558,8 +561,8 @@ class ShmeactComponentElement extends ShmeactElement<ShmeactComponentElementSpec
         }
     }
     
-    remove() {
-        this.rendered?.remove();
+    remove(skipDomRemoval: boolean = false) {
+        this.rendered?.remove(skipDomRemoval);
         if (this.effects)
             for (const effect of this.effects)
                 try {
@@ -723,6 +726,11 @@ export function useEffect(effect: EffectFunction, deps?: any[]): void {
     if (!ShmeactComponentElement.currentlyRendering)
         throw new Error('useEffect called outside render');
     return ShmeactComponentElement.currentlyRendering?.useEffect(effect, deps);
+}
+export function useLayoutEffect(effect: EffectFunction, deps?: any[]): void {
+    if (!ShmeactComponentElement.currentlyRendering)
+        throw new Error('useLayoutEffect called outside render');
+    return ShmeactComponentElement.currentlyRendering?.useLayoutEffect(effect, deps);
 }
 export function useRef<T = any>(): Ref<T|undefined>;
 export function useRef<T = any>(initial: T): Ref<T>;
