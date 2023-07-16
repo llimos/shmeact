@@ -34,14 +34,14 @@ Note that DOM element typings come from TypeScript, and may differ slightly in R
 
 ## What's supported
 * JSX, with Typescript configured appropriately
-* React basics - components, rendering, etc.
+* React basics - function components, rendering, etc.
 * `key` prop for matching elements during reconciliation
 * `useState` hook
-* `useEffect` hook
-* `useRef` hook, and the `ref` prop for DOM elements
+* `useEffect` and `useLayoutEffect` hooks
+* `useRef` hook, the `ref` prop for DOM and component elements, and `forwardRef` and `useInvocationHandler` for component element refs
 * `useMemo` hook
 * `useCallback` hook
-* Context
+* Context, through `createContext` and the `useContext` hook
 
 Other hooks might be added later, but there's enough here to prove the concept.
 

@@ -2,16 +2,26 @@
 // remove the space after the @ from the comment below to disable it
 //@ ts-nocheck
 
-//import {createElement, Fragment, createRoot, domRender, domUnmount, useEffect, useState, useRef, createContext, useContext, forwardRef, useImperativeHandle} from "./shmeact.js";
-import {createElement, Fragment, createRoot, domRender, domUnmount, useEffect, useState, useRef, createContext, useContext, forwardRef, useImperativeHandle} from "./shmOOact.js";
+import {
+    createElement, Fragment,
+    createRoot, domRender, domUnmount,
+    useEffect, useLayoutEffect, useState,
+    useMemo, useCallback,
+    useRef, forwardRef, useImperativeHandle,
+    createContext, useContext
+// Choose whether to use Shmeact or ShmOOact. API is identical
+// } from "./shmeact.js";
+} from "./shmOOact.js";
 
 const MyContext = createContext('No context provided!');
 
 const MyComponent = ({onUnmount}: {onUnmount: () => void}) => {
+    const [count, setCount] = useState(0);
     return <div className="hi">
             <h1>hello <b>world</b></h1>
             <Clock />
             <UnmountButton onUnmount={onUnmount} />
+            <ForceRerender onRerender={() => setCount(num => num + 1)} />
             <CSSChooser/>
             <List/>
             <Counter/>
@@ -43,12 +53,21 @@ const UnmountButton = ({onUnmount}: {onUnmount: () => void}) =>
         Click it to unmount {'everything'}
     </p>;
 
+const ForceRerender = ({onRerender}: {onRerender: () => void}) =>
+    <div>
+        <button type="button" onClick={onRerender}>Force Rerender</button>
+        {' '}
+        Nothing should change except the random list
+    </div>
+
 const CSSChooser = () => {
-    const [css, setCss] = useState<string>("https://unpkg.com/boltcss/bolt.min.css");
-    useEffect(() => {
-        (document.getElementById('main-css') as HTMLLinkElement)!.href = css
-    }, [css]);
-    const systemDarkMode = window.matchMedia('(prefers-color-scheme: dark)');
+    // Use a memo to store the element
+    const styleElement = useMemo<HTMLLinkElement>(
+        () => document.getElementById('main-css') as HTMLLinkElement,
+        []);
+    const [css, setCss] = useState<string>(styleElement.href);
+    useEffect(() => styleElement.href = css, [css]);
+    const systemDarkMode = useMemo(() => window.matchMedia('(prefers-color-scheme: dark)'), []);
     const [darkMode, setDarkMode] = useState<boolean>(systemDarkMode.matches);
     useEffect(() => {
         const listener = (e: MediaQueryListEvent) => setDarkMode(e.matches);
@@ -88,14 +107,18 @@ const List = () => {
         <ul>
             {listElements}
         </ul>
-        <label>
-            <input type="checkbox" disabled={randomOrder} value={reverseElementOrder} onChange={(e: any) => setReverseElementOrder(e.target.checked)} />
-            Reverse element order (used for testing reordering existing elements) <b>{!randomOrder && reverseElementOrder ? 'ON' : 'OFF'}</b>
-        </label>
-        <label>
-            <input type="checkbox" value={randomOrder} onChange={(e: any) => setRandomOrder(e.target.checked)} />
-            Random order <b>{randomOrder ? 'ON' : 'OFF'}</b>
-        </label>
+        <p>
+            <label>
+                <input type="checkbox" disabled={randomOrder} value={reverseElementOrder} onChange={(e: any) => setReverseElementOrder(e.target.checked)} />
+                Reverse element order (used for testing reordering existing elements) <b>{!randomOrder && reverseElementOrder ? 'ON' : 'OFF'}</b>
+            </label>
+        </p>
+        <p>
+            <label>
+                <input type="checkbox" value={randomOrder} onChange={(e: any) => setRandomOrder(e.target.checked)} />
+                Random order <b>{randomOrder ? 'ON' : 'OFF'}</b>
+            </label>
+        </p>
     </>
 }
 
@@ -105,8 +128,13 @@ const Counter = () => {
     useEffect(() => {
         if (count > 0 && count % 10 === 0)
             alert(`Well done! You got to ${count}`);
-        }, [count]);
+    }, [count]);
     
+    useLayoutEffect(() => {
+        if (count === 5)
+            alert('You got to 5, but since this is a layout effect it still shows 4');
+    }, [count === 5])
+
     return <div>
         <h3>Counter</h3>
         <CounterDisplay count={count}/>
@@ -120,7 +148,6 @@ const CounterDisplay = ({count}: {count: number}) => <div className="hi">The cou
 
 const RefTester = () => {
     const myRef = useRef<HTMLInputElement>();
-    useEffect(() => console.dir(myRef.current), [myRef.current]);
     
     return <div>
         <h3>Uncontrolled element with ref</h3>
