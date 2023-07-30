@@ -21,7 +21,10 @@
 
 
 // Type of a Shmeact component function. Your components should satisfy this
-export type ShmeactComponent<T extends ShmeactProps = {}> = (props: T & {children?: ShmeactElementSpec[] | null}) => ShmeactElementSpec;
+export interface ShmeactComponent<T extends ShmeactProps = {}> {
+    (props: T & {children?: ShmeactElementSpec[] | null}): ShmeactElementSpec;
+    isMemo?: true;
+}
 
 interface ShmeactProps {
     ref?: Ref;
@@ -354,6 +357,9 @@ function update(existing: ShmeactElement, updated: ShmeactElementSpec): void {
     
     // Component element update
     else if (isComponentElement(existing) && isComponentElement(updated)) {
+        // Check for unchanged memo
+        if (existing.component?.isMemo && !propsChanged(existing.props, updated.props) && !childrenChanged(existing.children, updated.children))
+            return;
         // Update props
         existing.props = updated.props;
         // Update children
@@ -872,6 +878,53 @@ function runEffect(effectDef: Effect): void {
     } catch (e) {
         console.error('Error running effect', e);
     }
+}
+
+type MemoComponent<T extends ShmeactProps> = ShmeactComponent<T> & {isMemo: true};
+export function memo<T extends ShmeactProps>(component: ShmeactComponent<T>): MemoComponent<T> {
+    // Returns a version of the component
+    // with a flag to tell the renderer that it's memoized
+    const newFunc: MemoComponent<T> = props => component(props);
+    newFunc.isMemo = true;
+    return newFunc;
+}
+
+// Used for determining whether to re-render a memoized component
+function specChanged(oldSpec: ShmeactElementSpec, newSpec: ShmeactElementSpec): boolean {
+    if (Array.isArray(oldSpec))
+        return Array.isArray(newSpec) ? childrenChanged(oldSpec, newSpec) : true;
+    if (isComponentElement(oldSpec) || isDomElement(oldSpec)) {
+        if (!isComponentElement(newSpec) && !isDomElement(newSpec))
+            return true;
+        return oldSpec.component !== newSpec.component
+            || propsChanged(oldSpec.props, newSpec.props)
+            || (Array.isArray(oldSpec.children) && Array.isArray(newSpec.children) ? childrenChanged(oldSpec.children, newSpec.children) : oldSpec.children !== newSpec.children);
+    }
+    return newSpec !== oldSpec;
+}
+function propsChanged(oldProps: ShmeactProps|null, newProps: ShmeactProps|null): boolean {
+    if (oldProps === null && newProps === null)
+        return false;
+    if (oldProps === null || newProps === null)
+        return true;
+    if (Object.keys(oldProps).length !== Object.keys(newProps).length)
+        return true;
+    for (const [key, value] of Object.entries(oldProps))
+        if (!(key in newProps) || newProps[key] !== value)
+            return true;
+    return false;
+}
+function childrenChanged(oldChildren: ShmeactElementSpec[]|null, newChildren: ShmeactElementSpec[]|null): boolean {
+    if (oldChildren === null && newChildren === null)
+        return false;
+    if (oldChildren === null || newChildren === null)
+        return true;
+    if (oldChildren.length !== newChildren.length)
+        return true;
+    for (const [index, child] of oldChildren.entries())
+        if (specChanged(child, newChildren[index]))
+            return true;
+    return false;
 }
 
 

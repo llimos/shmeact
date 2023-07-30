@@ -42,6 +42,7 @@ Note that DOM element typings come from TypeScript, and may differ slightly in R
 * `useMemo` hook
 * `useCallback` hook
 * Context, through `createContext` and the `useContext` hook
+* Memoized components through `memo(Component)`
 
 Other hooks might be added later, but there's enough here to prove the concept.
 

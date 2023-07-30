@@ -20,7 +20,7 @@
 // We use `children` for the spec and `childNodes` for the actual children
 
 // Type of a Shmeact component function. Your components should satisfy this
-export type ShmeactComponent<T extends ShmeactProps = {}> = (props: T & {children?: ShmeactElementSpec[] | null}) => ShmeactElementSpec;
+export type ShmeactComponent<T extends ShmeactProps = any> = (props: T & {children?: ShmeactElementSpec[] | null}) => ShmeactElementSpec;
 
 interface ShmeactProps {
     ref?: Ref;
@@ -36,7 +36,7 @@ const internalProps = ['key', 'ref'];
 
 interface ShmeactComponentElementSpec {
     type: 'component';
-    component: ShmeactComponent;
+    component: ShmeactComponent | MemoComponent;
     props: ShmeactProps | null;
     children: ShmeactElementSpec[] | null;
 }
@@ -176,6 +176,8 @@ abstract class ShmeactElement<T extends ShmeactElementSpec = ShmeactElementSpec>
             return new ShmeactDomElement(spec, parent);
         if (ShmeactArrayElement.isSpec(spec))
             return new ShmeactArrayElement(spec, parent);
+        if (ShmeactMemoComponentElement.isSpec(spec))
+            return new ShmeactMemoComponentElement(spec, parent);
         if (ShmeactComponentElement.isSpec(spec))
             return new ShmeactComponentElement(spec, parent);
         if (ShmeactTextElement.isSpec(spec))
@@ -512,7 +514,7 @@ class ShmeactComponentElement extends ShmeactElement<ShmeactComponentElementSpec
         return super.canUpdateWith(spec) && spec.component === this.component && spec.props?.key === this.props?.key;
     }
     
-    update(spec: ShmeactComponentElementSpec) {
+    update(spec: ShmeactComponentElementSpec): void {
         this.props = spec.props;
         this.children = spec.children;
         this.render();
@@ -698,6 +700,61 @@ class ShmeactComponentElement extends ShmeactElement<ShmeactComponentElementSpec
     }
 }
 
+class ShmeactMemoComponentElement extends ShmeactComponentElement {
+    static isSpec(spec: ShmeactElementSpec): spec is ShmeactComponentElementSpec {
+        return super.isSpec(spec)
+            && 'isMemo' in spec.component
+            && spec.component.isMemo;
+    }
+
+    // Only update if the props have changed
+    update(spec: ShmeactComponentElementSpec): void {
+        if (propsChanged(this.props, spec.props) || childrenChanged(this.children, spec.children))
+            super.update(spec);
+    }
+}
+
+// Helper functions for the memo element
+// to determine if props have changed
+// Defined outside the class because we recurse through the children
+function specChanged(oldSpec: ShmeactElementSpec, newSpec: ShmeactElementSpec): boolean {
+    if (ShmeactArrayElement.isSpec(oldSpec))
+        return ShmeactArrayElement.isSpec(newSpec) ? childrenChanged(oldSpec, newSpec) : true;
+    if (ShmeactComponentElement.isSpec(oldSpec) || ShmeactDomElement.isSpec(oldSpec)) {
+        if (!ShmeactComponentElement.isSpec(newSpec) && !ShmeactDomElement.isSpec(newSpec))
+            return true;
+        return oldSpec.component !== newSpec.component
+            || propsChanged(oldSpec.props, newSpec.props)
+            || (Array.isArray(oldSpec.children) && Array.isArray(newSpec.children) ? childrenChanged(oldSpec.children, newSpec.children) : oldSpec.children !== newSpec.children);
+    }
+    return newSpec !== oldSpec;
+}
+function propsChanged(oldProps: ShmeactProps|null, newProps: ShmeactProps|null): boolean {
+    if (oldProps === null && newProps === null)
+        return false;
+    if (oldProps === null || newProps === null)
+        return true;
+    if (Object.keys(oldProps).length !== Object.keys(newProps).length)
+        return true;
+    for (const [key, value] of Object.entries(oldProps))
+        if (!(key in newProps) || newProps[key] !== value)
+            return true;
+    return false;
+}
+function childrenChanged(oldChildren: ShmeactElementSpec[]|null, newChildren: ShmeactElementSpec[]|null): boolean {
+    if (oldChildren === null && newChildren === null)
+        return false;
+    if (oldChildren === null || newChildren === null)
+        return true;
+    if (oldChildren.length !== newChildren.length)
+        return true;
+    for (const [index, child] of oldChildren.entries())
+        if (specChanged(child, newChildren[index]))
+            return true;
+    return false;
+}
+
+
 type ParentElement = ShmeactElementWithChildren | ShmeactComponentElement | ShmeactRootElement; 
 
 /**
@@ -791,6 +848,15 @@ export function useContext<T>(context: Context<T>): T {
     if (!ShmeactComponentElement.currentlyRendering)
         throw new Error('useContext called outside render');
     return ShmeactComponentElement.currentlyRendering.useContext(context);
+}
+
+type MemoComponent<T extends ShmeactProps = any> = ShmeactComponent<T> & {isMemo: true};
+export function memo<T extends ShmeactProps = any>(component: ShmeactComponent<T>): MemoComponent<T> {
+    // Returns a version of the component
+    // with a flag to tell the renderer that it's memoized
+    const newFunc: MemoComponent<T> = props => component(props);
+    newFunc.isMemo = true;
+    return newFunc;
 }
 
 
