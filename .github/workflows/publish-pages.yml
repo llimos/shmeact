@@ -6,6 +6,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions: 
+      pages: write
+      id-token: write
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v3
@@ -16,3 +19,4 @@ jobs:
       - uses: actions/upload-pages-artifact@v2
         with:
           path: build
+      - uses: actions/deploy-pages@v2
