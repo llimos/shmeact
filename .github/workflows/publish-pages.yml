@@ -1,0 +1,18 @@
+name: Publish Pages
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+      - run: |
+          yarn
+          yarn build
+          sed -e 's/\\.\\/build\\//\\.\\//' index.html > ./build/index.html
+      - uses: actions/upload-pages-artifact@v2
+        with:
+          path: build
