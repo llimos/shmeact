@@ -12,7 +12,7 @@ jobs:
       - run: |
           yarn
           yarn build
-          sed -e 's/\\.\\/build\\//\\.\\//' index.html > ./build/index.html
+          sed -e 's/\.\/build\//\.\//' index.html > ./build/index.html
       - uses: actions/upload-pages-artifact@v2
         with:
           path: build
