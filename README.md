@@ -32,6 +32,9 @@ Start coding! The library is in shmeact.ts, and your code is in index.ts. Use it
 
 Note that DOM element typings come from TypeScript, and may differ slightly in React or have bugs. If this is the case, edit the `types.d.ts` file accordingly.
 
+## Object-oriented version
+`shmeact.js` uses a functional style. If you prefer your code object-oriented, check out `shmOOact.ts` instead. The functionality is identical, it's a matter of taste.
+
 ## What's supported
 * JSX, with Typescript configured appropriately
 * React basics - function components, rendering, etc.
